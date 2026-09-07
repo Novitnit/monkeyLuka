@@ -1,0 +1,17 @@
+{
+  "name": "@monkeyluka/server",
+  "module": "src/index.ts",
+  "dependencies": {
+    "@colyseus/schema": "^5.0.27",
+    "@monkeyluka/shared": "workspace:*",
+    "colyseus": "^0.18.5",
+    "elysia": "^1.4.30"
+  },
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module"
+}
