@@ -116,8 +116,7 @@ export default function Home() {
 
       <footer className="relative z-10 pb-7 text-center compact:pb-2">
         <p className="px-6 text-[11px] tracking-wide text-zinc-500/80">
-          © {new Date().getFullYear()} monkeyLuka · built with Bun, Next.js,
-          Elysia &amp; Colyseus
+          2026 monkeyLuka · A project by Novit
         </p>
       </footer>
     </main>

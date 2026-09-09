@@ -9,6 +9,23 @@ workspaces, installs, commands, tsconfig baseline) live in the root
 `@monkeyluka/web` — Next.js 16 (App Router) frontend on React 19 + Tailwind 4.
 Source lives in `src/` with the `@/*` path alias pointing at `./src/*`.
 
+## Play flow & realtime client
+
+`/play` (`src/components/play-screen.tsx`) is the arena entry point: a Play
+button opens a name dialog (the name goes on the leaderboard), then
+`colyseusClient.joinOrCreate("arena", { name }, ArenaState)` from
+`src/lib/colyseus.ts` joins the Colyseus room and boots the Phaser client
+(`src/game/arena-game.ts`) into a fullscreen mount. Room state + room name
+come from `@monkeyluka/shared`.
+
+- **Phaser must be imported dynamically** — its bundle touches `window` at
+  module scope, so `createArenaGame()` does `await import("phaser")` (never
+  import it statically, or SSR prerender of `/play` crashes).
+- **Colyseus endpoint** defaults to `ws://<page-hostname>:2567` so LAN dev
+  reaches the serving machine; override with `NEXT_PUBLIC_COLYSEUS_ENDPOINT`
+  (see `.env.example`).
+- Deps: `phaser`, `@colyseus/sdk`, `@monkeyluka/shared`.
+
 ## Commands
 
 From this dir: `bun run dev`, `bun run build`, `bun run start`,
@@ -23,8 +40,8 @@ checkout needs a build before `bun run typecheck` will pass.
 
 ## Importing raw-TS packages (@monkeyluka/shared)
 
-Turbopack does **not** follow bare `.ts` exports on its own. When this app
-starts importing `@monkeyluka/shared` (not wired up yet), add it to
+Turbopack does **not** follow bare `.ts` exports on its own. The web app
+imports `@monkeyluka/shared` (room state, room names), so it is in
 `transpilePackages` in `next.config.ts`:
 
 ```ts

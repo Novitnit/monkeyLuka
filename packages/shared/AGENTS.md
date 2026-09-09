@@ -29,19 +29,22 @@ place because every tsconfig here uses `"moduleResolution": "bundler"`
 
 - **Never `emit`/compile to `dist/`** — you'd create a duplicate module
   identity and break `instanceof` checks across workspaces.
-- Keep this package **framework-agnostic**: no Next.js, Elysia, or Colyseus
-  imports. It's shared between server and (potentially) client.
+- Keep this package **framework-agnostic**: no Next.js or Elysia imports.
+  The one deliberate exception is `@colyseus/schema` — the arena room's state
+  schema (`ArenaState`/`PlayerInfo`, plus `ROOM_NAMES.arena` and
+  `MAX_PLAYER_NAME_LENGTH`) lives here as the single source of truth shared
+  between server and web client. It's the serialization format, not server
+  logic; don't import anything else Colyseus-related.
 - Type-only imports/exports use `import type` / `export type` because
   `verbatimModuleSyntax` is enabled (see `src/index.ts` for the pattern).
 
 ## Consumers
 
-- **server** — imports directly (Bun handles `.ts`), e.g. `APP_NAME`,
-  `greeting`, `HealthStatus`.
-- **web** — does **not** import this package yet. When it does: Turbopack does
-  not follow bare `.ts` exports on its own, so add `@monkeyluka/shared` to
-  `transpilePackages` in `apps/web/next.config.ts` (details in
-  `apps/web/AGENTS.md`).
+- **server** — imports `ArenaRoom`'s state, `ROOM_NAMES`, `MAX_PLAYER_NAME_LENGTH`
+  directly (Bun handles `.ts`).
+- **web** — imports `ArenaState` (as the SDK join root-schema), `ROOM_NAMES`,
+  `MAX_PLAYER_NAME_LENGTH`. Turbopack doesn't follow bare `.ts` exports on its
+  own, so `@monkeyluka/shared` is in `transpilePackages` in `apps/web/next.config.ts`.
 
 ## Commands
 
