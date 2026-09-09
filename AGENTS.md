@@ -1,8 +1,18 @@
 # AGENTS.md — monkeyLuka monorepo
 
+If any changes are made, update AGENTS.md every time.
+
 Guidance for humans and AI agents working in this repository. Read this before
 editing: it explains how the Bun workspace monorepo works and the conventions
 you must follow.
+
+Package-specific guidance lives in each workspace's own `AGENTS.md` file; read
+the relevant one before editing inside a workspace:
+
+- `apps/web/AGENTS.md` — `@monkeyluka/web` (Next.js 16 frontend)
+- `apps/server/AGENTS.md` — `@monkeyluka/server` (ElysiaJS HTTP + Colyseus realtime)
+- `packages/shared/AGENTS.md` — `@monkeyluka/shared` (framework-agnostic shared code)
+- `map/AGENTS.md` — Tiled game-map data + art (not a Bun workspace)
 
 ## What this repo is
 
@@ -14,13 +24,14 @@ packages.
 monkeyLuka/
 ├── package.json          # workspace root (scripts, shared dev deps)
 ├── bun.lock              # single lockfile for the whole repo — commit it
-├── AGENTS.md
-├── CLAUDE.md             # imports @AGENTS.md (Claude Code)
+├── AGENTS.md             # monorepo dev guide (this file); per-workspace AGENTS.md for details
+├── CLAUDE.md             # navigation entry point → AGENTS.md (Claude Code compat)
+├── map/                  # tracked Tiled game-map data + art → map/AGENTS.md
 ├── apps/
-│   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend
-│   └── server/           # @monkeyluka/server — ElysiaJS (HTTP) + Colyseus (realtime)
+│   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend → apps/web/AGENTS.md
+│   └── server/           # @monkeyluka/server — ElysiaJS (HTTP) + Colyseus (realtime) → apps/server/AGENTS.md
 └── packages/
-    └── shared/           # @monkeyluka/shared — framework-agnostic shared code
+    └── shared/           # @monkeyluka/shared — framework-agnostic shared code → packages/shared/AGENTS.md
 ```
 
 ## Requirements & versions
@@ -63,44 +74,18 @@ inside a workspace — run it at the root.
 2. Copy the `tsconfig.json` baseline from `apps/server` or `packages/shared`.
 3. Add the workspace name to a consumer's deps with `"workspace:*"`.
 4. `bun install` at the root.
+5. Give the new workspace its own `AGENTS.md` (mirror `apps/server/AGENTS.md`
+   or `packages/shared/AGENTS.md`) and link it from this file.
 
 ## Internal packages: no build, raw TypeScript
 
 **`packages/` do not need to be built, and you should not add build steps to
-them.** They ship raw `.ts` files because Bun runs TypeScript natively.
+them.** They ship raw `.ts` files because Bun runs TypeScript natively. The
+pattern and its rules are documented in `packages/shared/AGENTS.md`; the rules
+every consumer must respect:
 
-`packages/shared` demonstrates the pattern:
-
-```jsonc
-// packages/shared/package.json
-"exports": {
-  ".": {
-    "types": "./src/index.ts",
-    "default": "./src/index.ts"   // Bun loads the .ts directly
-  }
-}
-```
-
-Any Bun-runtime workspace can `import { greeting } from "@monkeyluka/shared"`
-and it just works — Bun transpiles on the fly. `tsc --noEmit` typechecks it
-in place because every tsconfig here uses `"moduleResolution": "bundler"`
-(Turbopack/webpack-style resolution understands `.ts` in `exports`).
-
-Consequences you must respect:
-
-- **Never `emit`/**compile to `dist/` for internal packages**; you'd create a
+- **Never `emit`/compile to `dist/` for internal packages** — you'd create a
   duplicate module identity and break `instanceof` checks across workspaces.
-- **Next.js caveat:** the web app's bundler (Turbopack) does not follow bare
-  `.ts` exports on its own. When a Next.js app needs to import a raw-TS
-  package, add it to `transpilePackages` in `apps/web/next.config.ts`:
-
-  ```ts
-  const nextConfig: NextConfig = {
-    transpilePackages: ["@monkeyluka/shared"],
-  };
-  ```
-
-  (Not wired up yet — `apps/web` currently has no dependency on `shared`.)
 - Keep shared packages **framework-agnostic** (no Next.js or Elysia imports).
 - Type-only imports should use `import type { ... }` because `verbatimModuleSyntax`
   is enabled in every tsconfig.
@@ -121,44 +106,19 @@ Per-workspace scripts also work from inside the app dir (`bun run dev` in
 `apps/web`). Don't use `npm run`; Bun's shell runner resolves workspace bins
 fine, and Bun is required for `.ts` execution anyway.
 
-## The server app (Elysia + Colyseus)
-
-`apps/server` is **one process** exposing two ports:
-
-- `:3001` — **ElysiaJS** REST API (`GET /`, `GET /health`). Non-greedy: it
-  uses `Bun.serve()` under the hood.
-- `:2567` — **Colyseus** realtime matchmaker + WebSocket rooms. It runs its
-  own `node:http` server and `ws` transport, which **does work on Bun** —
-  verified end-to-end (room join + schema state sync).
-
-Defaults: `PORT=3001`, `COLYSEUS_PORT=2567`, `HOST=0.0.0.0`. Override via env
-or `.env` files (Bun auto-loads `.env` in the workspace dir).
-
-Room state uses the **functional `schema()` API** from `@colyseus/schema`
-(see `apps/server/src/rooms/ExampleRoom.ts`) — no decorators, no special
-tsconfig flags. If you ever switch to the legacy `@type()` decorators, enable
-`experimentalDecorators` **and** `useDefineForClassFields: false` in
-`apps/server/tsconfig.json`.
-
-Client SDK for tests/scripts: `@colyseus/sdk` (install it only where you need
-it, e.g. as a devDependency of a smoke-test script).
-
-## Conventions & gotchas
+## Conventions & gotchas (repo-wide)
 
 - **TypeScript configs** follow the Bun baseline (`module: "Preserve"`,
   `moduleResolution: "bundler"`, `verbatimModuleSyntax`, `noEmit`,
   `types: ["bun"]` via `@types/bun`). The baseline enables
   `noImplicitOverride` — class members overriding base classes (e.g. Colyseus
   lifecycle methods) must be marked `override`.
-- **Next.js typegen:** `LayoutProps` and friend are generated by Next into
-  `.next/types/` on first `next dev`/`next build`. Run one of those before
-  `tsc --noEmit` in `apps/web`; a clean checkout needs a build before
-  `bun run typecheck` will pass.
 - **Commit `bun.lock`** — it pins every dependency for all workspaces.
 - **Don't gitignore `node_modules` subtree noise** beyond the root
   `.gitignore` rules; `.next/`, `node_modules/`, and `.env*` are already
   covered.
 - Keep secrets out of source; use `.env` files (gitignored, `.env.example`
   can be committed).
-- Colyseus versions matter: this repo uses 0.18.x where the HTTP matchmaker
-  routes are **POST-only** (`POST /matchmake/joinOrCreate/<room>`).
+
+Workspace-specific gotchas (Next.js typegen / LAN dev, Colyseus internals,
+`transpilePackages`) live in the respective workspace `AGENTS.md`.

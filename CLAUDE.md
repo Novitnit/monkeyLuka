@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This project's full development guide for coding agents is maintained in
-AGENTS.md.
+This file is only a navigation entry point. The single source of truth for this
+repository's development guide is **AGENTS.md** — read it before editing.
 
 @AGENTS.md
