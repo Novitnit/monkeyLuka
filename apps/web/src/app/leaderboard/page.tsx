@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { PlaceholderScreen } from "@/components/placeholder-screen";
+import { IconTrophy } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "Leaderboard · monkeyLuka",
+  title: "Leaderboard",
 };
 
 export default function LeaderboardPage() {
@@ -10,7 +11,8 @@ export default function LeaderboardPage() {
     <PlaceholderScreen
       eyebrow="Leaderboard"
       title="No scores yet"
-      description="Top players will show up here once games are being played."
+      description="Once games are live, the top monkeys get crowned here. For now the jungle is still deciding who’s boss."
+      icon={<IconTrophy className="size-7 text-emerald-300" />}
     />
   );
 }

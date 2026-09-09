@@ -2,18 +2,98 @@
 
 /* monkeyLuka is a dark, game-first UI — no auto light/dark flip. */
 :root {
-  --background: #0b0e1a;
-  --foreground: #f4f4f5;
+  color-scheme: dark;
+  --background: #0a0e17;
+  --foreground: #e7e9f0;
+  --surface: #12172a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  background-color: var(--background);
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  /* Fixed ambient wash so scrolled content never sits on flat black. */
+  background-image:
+    radial-gradient(
+      1100px 700px at 85% -10%,
+      rgb(250 204 21 / 0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 650px at -10% 110%,
+      rgb(16 185 129 / 0.05),
+      transparent 60%
+    );
+  background-attachment: fixed;
   color: var(--foreground);
+}
+
+::selection {
+  background-color: rgb(251 191 36 / 0.3);
+  color: #fff;
+}
+
+/* Motion ---------------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(28px, -22px, 0) scale(1.05);
+  }
+  66% {
+    transform: translate3d(-20px, 14px, 0) scale(0.97);
+  }
+}
+
+.animate-rise {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-bob {
+  animation: bob 4.5s ease-in-out infinite;
+}
+
+.animate-drift {
+  animation: drift 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-bob,
+  .animate-drift {
+    animation: none;
+  }
 }
