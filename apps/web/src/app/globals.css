@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Short viewports (≤560px tall) — phones held sideways (the game's home
+   territory), short portrait windows (e.g. 320×480), and short desktop
+   windows. Everything tightens up so the screen fits without scrolling.
+   Landscape phones always match; any short orientation gets the same
+   treatment so nothing spills off-screen. */
+@custom-variant compact (@media (max-height: 560px));
+
 /* monkeyLuka is a dark, game-first UI — no auto light/dark flip. */
 :root {
   color-scheme: dark;
