@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
+const allowedOriginHost = process.env.ALLOWED_ORIGIN_HOST ?? "*";
+
 const nextConfig: NextConfig = {
-  // If an internal package ships raw TypeScript (see packages/shared), list it
-  // here so Turbopack can follow its bare `.ts` exports:
-  // transpilePackages: ["@monkeyluka/shared"],
+  allowedDevOrigins: [allowedOriginHost],
 };
 
 export default nextConfig;
