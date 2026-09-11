@@ -1,0 +1,48 @@
+diff --git a/dist/adapters/node/request.cjs b/dist/adapters/node/request.cjs
+index 5d3b220f03799f654d09d8e356b7fff12f350b3c..426043a64f4d1d72bcd48c2b8bc75e622c91ae82 100644
+--- a/dist/adapters/node/request.cjs
++++ b/dist/adapters/node/request.cjs
+@@ -113,13 +113,14 @@ async function setResponse(res, response) {
+ 			for (;;) {
+ 				const { done, value } = await reader.read();
+ 				if (done) break;
+-				if (!res.write(value)) if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) continue;
+-				else {
+-					res.once("drain", next);
+-					return;
++				if (!res.write(value)) {
++					if (!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)) {
++						res.once("drain", next);
++						return;
++					}
+ 				}
+-				res.end();
+ 			}
++			res.end();
+ 		} catch (error) {
+ 			cancel(error instanceof Error ? error : new Error(String(error)));
+ 		}
+diff --git a/dist/adapters/node/request.mjs b/dist/adapters/node/request.mjs
+index ebd99889c0ac0fa42bdaacc3435fb001b0555790..fca0e57e10b426182a0d40245d2d8b63ffc690ed 100644
+--- a/dist/adapters/node/request.mjs
++++ b/dist/adapters/node/request.mjs
+@@ -111,13 +111,14 @@ async function setResponse(res, response) {
+ 			for (;;) {
+ 				const { done, value } = await reader.read();
+ 				if (done) break;
+-				if (!res.write(value)) if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) continue;
+-				else {
+-					res.once("drain", next);
+-					return;
++				if (!res.write(value)) {
++					if (!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT)) {
++						res.once("drain", next);
++						return;
++					}
+ 				}
+-				res.end();
+ 			}
++			res.end();
+ 		} catch (error) {
+ 			cancel(error instanceof Error ? error : new Error(String(error)));
+ 		}

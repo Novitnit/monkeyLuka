@@ -62,6 +62,8 @@ instead.
 ## Colyseus 0.18 quirks
 
 - HTTP matchmaker routes are **POST-only** (`POST /matchmake/joinOrCreate/<room>`).
+- **Playground** is mounted at `/playground` (incl. trailing slash — `skipTrailingSlashes: true` is required because better-call's router 404s on a slash mismatch; the SPA only registers `/playground/` + `/playground/**:splat`).
+- **Playground static assets are served through `@colyseus/better-call`'s Node adapter, which we patch** (`patches/@colyseus%2Fbetter-call@1.3.3.patch`, see `discoveries/playground-assets-stall-better-call-res-end.md`): upstream 1.3.3's `setResponse` never calls `res.end()` after a body hits backpressure, so any asset >16 KiB stalls the browser at exactly 16 KiB. Do not "fix" this by removing the patch or switching `res.end()` back into the loop.
 - Colyseus is `colyseus@0.18` with core 0.18.11; `defineServer`/`defineRoom`/`Server`
   are all re-exported from the `colyseus` package itself, no `@colyseus/core` dep needed.
 - Client SDK for tests/scripts is `@colyseus/sdk` — install it only where it's

@@ -19,6 +19,7 @@ Start here, then follow the link that matches what you're working on:
 | `apps/server/AGENTS.md` | `@monkeyluka/server` — Colyseus realtime only, `defineServer` format |
 | `packages/shared/AGENTS.md` | `@monkeyluka/shared` — framework-agnostic shared code |
 | `map/AGENTS.md` | Tiled game-map data + art (not a Bun workspace) |
+| `discoveries/agents.md` | How to write a discovery note — one file per non-obvious bug/fix |
 
 Read the workspace `AGENTS.md` before editing inside that workspace; read
 `architecture.md` for a system-level view of how the pieces fit together.
@@ -33,9 +34,11 @@ packages.
 monkeyLuka/
 ├── package.json          # workspace root (scripts, shared dev deps)
 ├── bun.lock              # single lockfile for the whole repo — commit it
+├── patches/              # `bun patch` diffs for deps we must fix (see below)
 ├── AGENTS.md             # monorepo dev guide (this file); per-workspace AGENTS.md for details
 ├── architecture.md       # system architecture: processes, data flow, design decisions
 ├── CLAUDE.md             # navigation entry point → AGENTS.md (Claude Code compat)
+├── discoveries/          # per-bug root-cause write-ups → discoveries/agents.md
 ├── map/                  # tracked Tiled game-map data + art → map/AGENTS.md
 ├── apps/
 │   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend + Elysia REST API under /api → apps/web/AGENTS.md
@@ -76,6 +79,24 @@ cd apps/web && bun add -d some-plugin
 This installs everywhere, updates only that workspace's `package.json`, and
 records the resolution in the root `bun.lock`. Do **not** run `bun install`
 inside a workspace — run it at the root.
+
+### Patching a dependency
+
+When a dependency has an upstream bug we can't wait for, patch it with
+`bun patch` (committed to `patches/`, pinned via `patchedDependencies` in the
+root `package.json` + `bun.lock`, applied automatically on `bun install`):
+
+```sh
+EDITOR=true bun patch <pkg>        # switches it to editable mode
+# edit the extracted copy under node_modules/<pkg>
+bun patch --commit 'node_modules/<pkg>'   # writes patches/… and pins it
+bun install                        # relinks the patched copy (run from root)
+```
+
+Notes: the editable copy alone can't resolve its own deps (they live in the
+`.bun` store) — always `bun install` after `--commit`; patch both the `.mjs`
+and `.cjs` build outputs when both exist. Every patch needs a write-up in
+`discoveries/` and a pointer from the owning workspace's `AGENTS.md`.
 
 ### Adding a new workspace
 
@@ -131,4 +152,6 @@ fine, and Bun is required for `.ts` execution anyway.
   can be committed).
 
 Workspace-specific gotchas (Next.js typegen / LAN dev, Colyseus internals,
-`transpilePackages`) live in the respective workspace `AGENTS.md`.
+`transpilePackages`) live in the respective workspace `AGENTS.md`. Non-obvious
+bugs and their fixes get a write-up in `discoveries/` — one file per discovery;
+see `discoveries/agents.md` for the format and conventions.

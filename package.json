@@ -21,5 +21,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5"
+  },
+  "patchedDependencies": {
+    "@colyseus/better-call@1.3.3": "patches/@colyseus%2Fbetter-call@1.3.3.patch"
   }
 }

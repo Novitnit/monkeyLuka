@@ -1,4 +1,4 @@
-import { defineRoom, defineServer, WebSocketTransport } from "colyseus";
+import { createRouter, defineRoom, defineServer, playground, WebSocketTransport } from "colyseus";
 import { ROOM_NAMES } from "@monkeyluka/shared";
 import { JungleRoom } from "./rooms/jungle-room";
 
@@ -22,6 +22,16 @@ const gameServer = defineServer({
   rooms: {
     [ROOM_NAMES.jungle]: defineRoom(JungleRoom),
   },
+  // `skipTrailingSlashes` — rou3's radix router (and better-call's stricter
+  // trailing-slash consistency check on top of it) treats `/playground` and
+  // `/playground/` as distinct; both 404/blank-page without this, because the
+  // playground registers only `/playground/` + `/playground/**:splat`.
+  routes: createRouter(
+    {
+      ...playground({ prefix: "/playground" }),
+    },
+    { skipTrailingSlashes: true },
+  )
 });
 
 try {
