@@ -1,20 +1,20 @@
 import type Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
-import type { ArenaRoomState } from "@monkeyluka/shared";
+import type { JungleRoomState } from "@monkeyluka/shared";
 
-/** A joined arena room, typed with its synced state. */
-export type ArenaRoom = Room<unknown, ArenaRoomState>;
+/** A joined jungle room, typed with its synced state. */
+export type JungleRoom = Room<unknown, JungleRoomState>;
 
 /**
- * Boot the Phaser arena client inside `parent` and return the game instance.
+ * Boot the Phaser jungle client inside `parent` and return the game instance.
  *
  * Phaser is imported dynamically on purpose: its bundle touches `window` at
  * module scope, so it must never load during server-side rendering. This
  * function only ever runs from a browser effect.
  */
-export async function createArenaGame(
+export async function createJungleGame(
   parent: HTMLElement,
-  room: ArenaRoom,
+  room: JungleRoom,
 ): Promise<Phaser.Game> {
   const Phaser = await import("phaser");
 
@@ -50,7 +50,7 @@ export async function createArenaGame(
           .text(
             width / 2,
             height / 2 + 4,
-            `Connected to the arena as "${name}"`,
+            `Connected to the jungle as "${name}"`,
             {
               fontFamily: "sans-serif",
               fontSize: "22px",

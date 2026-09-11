@@ -9,22 +9,45 @@ workspaces, installs, commands, tsconfig baseline) live in the root
 `@monkeyluka/web` — Next.js 16 (App Router) frontend on React 19 + Tailwind 4.
 Source lives in `src/` with the `@/*` path alias pointing at `./src/*`.
 
+It also hosts the project's **REST API**: the Elysia app that used to run as a
+separate `apps/server` process now mounts inside Next via Elysia's official
+"Integration with Nextjs" pattern (see below).
+
 ## Play flow & realtime client
 
-`/play` (`src/components/play-screen.tsx`) is the arena entry point: a Play
+`/play` (`src/components/play-screen.tsx`) is the jungle entry point: a Play
 button opens a name dialog (the name goes on the leaderboard), then
-`colyseusClient.joinOrCreate("arena", { name }, ArenaState)` from
+`colyseusClient.joinOrCreate("jungle", { name }, JungleState)` from
 `src/lib/colyseus.ts` joins the Colyseus room and boots the Phaser client
-(`src/game/arena-game.ts`) into a fullscreen mount. Room state + room name
+(`src/game/jungle-game.ts`) into a fullscreen mount. Room state + room name
 come from `@monkeyluka/shared`.
+- The idle menu wears the shared chrome: `SiteHeader` at the top and a
+  "← Back to the menu" link under the Play button. Once a room is joined the
+  screen switches to the fullscreen Phaser mount (which keeps only its own
+  Exit button).
 
 - **Phaser must be imported dynamically** — its bundle touches `window` at
-  module scope, so `createArenaGame()` does `await import("phaser")` (never
+  module scope, so `createJungleGame()` does `await import("phaser")` (never
   import it statically, or SSR prerender of `/play` crashes).
 - **Colyseus endpoint** defaults to `ws://<page-hostname>:2567` so LAN dev
   reaches the serving machine; override with `NEXT_PUBLIC_COLYSEUS_ENDPOINT`
   (see `.env.example`).
-- Deps: `phaser`, `@colyseus/sdk`, `@monkeyluka/shared`.
+- Deps: `phaser`, `@colyseus/sdk`, `elysia`, `@elysia/cors`, `@monkeyluka/shared`.
+
+## REST API (Elysia × Next.js)
+
+`src/app/api/[[...slugs]]/route.ts` is the whole Elysia app, following the
+[ElysiaJS Next.js integration](https://elysiajs.com/integrations/nextjs):
+create the `Elysia` instance once, set `{ prefix: "/api" }`, then export
+`app.fetch` as each HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`OPTIONS`). Requests that reach Next's `/api**` catch-all are forwarded
+straight to Elysia.
+
+- Routes: `GET /api` (project info), `GET /api/health` (HealthStatus).
+- `export const dynamic = "force-dynamic"` keeps route handlers un-prerendered
+  so `/api/health` reports live uptime.
+- CORS uses `ALLOWED_ORIGIN_HOST` (same env var as `allowedDevOrigins` below);
+  Next 16 normalizes `/api/` → `/api`, Elysia matches both.
 
 ## Commands
 
@@ -54,7 +77,8 @@ const nextConfig: NextConfig = {
 
 `next.config.ts` reads `ALLOWED_ORIGIN_HOST` (default `"*"`) into
 `allowedDevOrigins`; set it in `apps/web/.env` to the LAN IP used to reach
-:3000, otherwise Next 16 blocks non-localhost dev origins.
+:3000, otherwise Next 16 blocks non-localhost dev origins. The same env var
+drives the Elysia `/api` CORS in the route handler above.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

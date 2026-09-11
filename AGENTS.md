@@ -6,13 +6,22 @@ Guidance for humans and AI agents working in this repository. Read this before
 editing: it explains how the Bun workspace monorepo works and the conventions
 you must follow.
 
-Package-specific guidance lives in each workspace's own `AGENTS.md` file; read
-the relevant one before editing inside a workspace:
+## Docs navigation
 
-- `apps/web/AGENTS.md` — `@monkeyluka/web` (Next.js 16 frontend)
-- `apps/server/AGENTS.md` — `@monkeyluka/server` (ElysiaJS HTTP + Colyseus realtime)
-- `packages/shared/AGENTS.md` — `@monkeyluka/shared` (framework-agnostic shared code)
-- `map/AGENTS.md` — Tiled game-map data + art (not a Bun workspace)
+Start here, then follow the link that matches what you're working on:
+
+| Doc | What it's for |
+|---|---|
+| `AGENTS.md` | Monorepo dev guide (this file) — conventions, commands, gotchas |
+| `architecture.md` | System architecture — processes, workspaces, data flow |
+| `CLAUDE.md` | Claude Code entry stub → points at `AGENTS.md` |
+| `apps/web/AGENTS.md` | `@monkeyluka/web` — Next.js 16 frontend + Elysia REST API under `/api` |
+| `apps/server/AGENTS.md` | `@monkeyluka/server` — Colyseus realtime only, `defineServer` format |
+| `packages/shared/AGENTS.md` | `@monkeyluka/shared` — framework-agnostic shared code |
+| `map/AGENTS.md` | Tiled game-map data + art (not a Bun workspace) |
+
+Read the workspace `AGENTS.md` before editing inside that workspace; read
+`architecture.md` for a system-level view of how the pieces fit together.
 
 ## What this repo is
 
@@ -25,11 +34,12 @@ monkeyLuka/
 ├── package.json          # workspace root (scripts, shared dev deps)
 ├── bun.lock              # single lockfile for the whole repo — commit it
 ├── AGENTS.md             # monorepo dev guide (this file); per-workspace AGENTS.md for details
+├── architecture.md       # system architecture: processes, data flow, design decisions
 ├── CLAUDE.md             # navigation entry point → AGENTS.md (Claude Code compat)
 ├── map/                  # tracked Tiled game-map data + art → map/AGENTS.md
 ├── apps/
-│   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend → apps/web/AGENTS.md
-│   └── server/           # @monkeyluka/server — ElysiaJS (HTTP) + Colyseus (realtime) → apps/server/AGENTS.md
+│   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend + Elysia REST API under /api → apps/web/AGENTS.md
+│   └── server/           # @monkeyluka/server — Colyseus realtime matchmaker + rooms (defineServer) → apps/server/AGENTS.md
 └── packages/
     └── shared/           # @monkeyluka/shared — framework-agnostic shared code → packages/shared/AGENTS.md
 ```

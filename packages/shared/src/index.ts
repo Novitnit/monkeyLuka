@@ -13,15 +13,15 @@ export const APP_NAME = "monkeyLuka";
 
 /** A room/game identifier used by both server and client. */
 export const ROOM_NAMES = {
-  arena: "arena",
+  jungle: "jungle",
 } as const;
 
 /** Max length (trimmed) for the leaderboard name a player enters at Play. */
 export const MAX_PLAYER_NAME_LENGTH = 24;
 
 /**
- * A player's public identity inside an arena room — keyed by sessionId in
- * `ArenaState.players`. Kept lean on purpose; leaderboard stats get added
+ * A player's public identity inside a jungle room — keyed by sessionId in
+ * `JungleState.players`. Kept lean on purpose; leaderboard stats get added
  * here as the game ships.
  */
 export const PlayerInfo = schema({
@@ -29,11 +29,11 @@ export const PlayerInfo = schema({
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;
 
-/** Root room state, synced to every client in an arena room. */
-export const ArenaState = schema({
+/** Root room state, synced to every client in a jungle room. */
+export const JungleState = schema({
   players: t.map(PlayerInfo),
-}, "ArenaState");
-export type ArenaRoomState = InstanceType<typeof ArenaState>;
+}, "JungleState");
+export type JungleRoomState = InstanceType<typeof JungleState>;
 
 export function greeting(name: string): string {
   return `Welcome to ${name}!`;

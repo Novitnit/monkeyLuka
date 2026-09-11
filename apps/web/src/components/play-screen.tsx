@@ -1,20 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
-  ArenaState,
+  JungleState,
   MAX_PLAYER_NAME_LENGTH,
   ROOM_NAMES,
 } from "@monkeyluka/shared";
 import { colyseusClient } from "@/lib/colyseus";
-import { createArenaGame, type ArenaRoom } from "@/game/arena-game";
+import { createJungleGame, type JungleRoom } from "@/game/jungle-game";
+import { SiteHeader } from "@/components/site-header";
 import { IconPlay } from "@/components/icons";
 
 type Phase = "idle" | "naming" | "joining" | "playing";
 
 /**
  * The Play screen: a menu with a Play button that first asks for the name to
- * show on the leaderboard, then joins the Colyseus arena room and boots the
+ * show on the leaderboard, then joins the Colyseus jungle room and boots the
  * Phaser client. Foundation only — matchmaking + a rendered placeholder scene.
  */
 export function PlayScreen() {
@@ -22,9 +24,9 @@ export function PlayScreen() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const roomRef = useRef<ArenaRoom | null>(null);
+  const roomRef = useRef<JungleRoom | null>(null);
   const gameRef = useRef<
-    Awaited<ReturnType<typeof createArenaGame>> | null
+    Awaited<ReturnType<typeof createJungleGame>> | null
   >(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -35,7 +37,7 @@ export function PlayScreen() {
   useEffect(() => {
     if (phase !== "playing" || !mountRef.current || !roomRef.current) return;
     let disposed = false;
-    void createArenaGame(mountRef.current, roomRef.current).then((game) => {
+    void createJungleGame(mountRef.current, roomRef.current).then((game) => {
       if (disposed) {
         game.destroy(true);
         return;
@@ -106,18 +108,18 @@ export function PlayScreen() {
     setPhase("joining");
     try {
       const room = await colyseusClient.joinOrCreate(
-        ROOM_NAMES.arena,
+        ROOM_NAMES.jungle,
         { name: trimmed },
-        ArenaState,
+        JungleState,
       );
       roomRef.current = room;
       setPhase("playing");
     } catch (err) {
-      console.error("Failed to join the arena:", err);
+      console.error("Failed to join the jungle:", err);
       setError(
         err instanceof Error
           ? err.message
-          : "Could not join the arena. Is the game server running?",
+          : "Could not join the jungle. Is the game server running?",
       );
       setPhase("naming");
     }
@@ -145,43 +147,56 @@ export function PlayScreen() {
   }
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6 py-16 sm:px-8 compact:py-6">
-      {/* Ambient backdrop, mirroring the menu */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="animate-drift absolute left-1/2 top-6 h-[30rem] w-[30rem] -translate-x-1/2 rounded-full bg-amber-400/[0.07] blur-[120px]" />
-        <div className="animate-drift absolute -right-24 -bottom-28 h-80 w-80 rounded-full bg-emerald-400/[0.08] blur-[110px] [animation-delay:-9s]" />
-      </div>
+    <div className="relative flex min-h-dvh flex-col overflow-hidden">
+      <SiteHeader />
 
-      <section className="animate-rise relative w-full max-w-md rounded-[1.75rem] border border-white/10 bg-white/[0.03] px-8 py-12 text-center shadow-[0_30px_90px_-24px_rgba(0,0,0,0.7)] backdrop-blur-md compact:rounded-2xl compact:px-5 compact:py-6">
-        <div
-          aria-hidden
-          className="absolute inset-x-10 top-0 h-px bg-linear-to-r from-transparent via-amber-300/50 to-transparent"
-        />
-
-        <div className="animate-bob mx-auto grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] shadow-[0_12px_30px_-12px_rgba(251,191,36,0.45)] compact:size-11">
-          <IconPlay className="size-6 text-amber-300 compact:size-5" />
+      <main className="relative flex flex-1 flex-col items-center justify-center px-6 py-16 sm:px-8 compact:py-6">
+        {/* Ambient backdrop, mirroring the menu */}
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="animate-drift absolute left-1/2 top-6 h-[30rem] w-[30rem] -translate-x-1/2 rounded-full bg-amber-400/[0.07] blur-[120px]" />
+          <div className="animate-drift absolute -right-24 -bottom-28 h-80 w-80 rounded-full bg-emerald-400/[0.08] blur-[110px] [animation-delay:-9s]" />
         </div>
 
-        <p className="mt-6 text-[0.7rem] font-semibold tracking-[0.35em] text-amber-300/90 uppercase compact:mt-2">
-          Arena
-        </p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-50 compact:text-xl">
-          Ready to play?
-        </h1>
-        <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-zinc-400 compact:text-xs">
-          Jump into the arena and grab the loot. First, tell us the name you
-          want on the leaderboard.
-        </p>
+        <section className="animate-rise relative w-full max-w-md rounded-[1.75rem] border border-white/10 bg-white/[0.03] px-8 py-12 text-center shadow-[0_30px_90px_-24px_rgba(0,0,0,0.7)] backdrop-blur-md compact:rounded-2xl compact:px-5 compact:py-6">
+          <div
+            aria-hidden
+            className="absolute inset-x-10 top-0 h-px bg-linear-to-r from-transparent via-amber-300/50 to-transparent"
+          />
 
-        <button
-          type="button"
-          onClick={openDialog}
-          className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-amber-300 to-amber-500 px-8 py-4 text-lg font-extrabold tracking-wide text-zinc-950 shadow-[0_18px_50px_-14px_rgba(251,191,36,0.55)] ring-1 ring-inset ring-amber-200/50 transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 compact:px-6 compact:py-2.5 compact:text-base"
-        >
-          <IconPlay className="size-5 text-zinc-900 compact:size-4" />
-          Play
-        </button>
-      </section>
+          <div className="animate-bob mx-auto grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] shadow-[0_12px_30px_-12px_rgba(251,191,36,0.45)] compact:size-11">
+            <IconPlay className="size-6 text-amber-300 compact:size-5" />
+          </div>
+
+          <p className="mt-6 text-[0.7rem] font-semibold tracking-[0.35em] text-amber-300/90 uppercase compact:mt-2">
+            Jungle
+          </p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-50 compact:text-xl">
+            Ready to play?
+          </h1>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-zinc-400 compact:text-xs">
+            Jump into the jungle and grab the loot. First, tell us the name you
+            want on the leaderboard.
+          </p>
+
+          <button
+            type="button"
+            onClick={openDialog}
+            className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-amber-300 to-amber-500 px-8 py-4 text-lg font-extrabold tracking-wide text-zinc-950 shadow-[0_18px_50px_-14px_rgba(251,191,36,0.55)] ring-1 ring-inset ring-amber-200/50 transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 compact:px-6 compact:py-2.5 compact:text-base"
+          >
+            <IconPlay className="size-5 text-zinc-900 compact:size-4" />
+            Play
+          </button>
+
+          <div className="mt-6 compact:mt-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:border-amber-300/30 hover:bg-white/10 hover:text-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 compact:px-4 compact:py-1.5 compact:text-xs"
+            >
+              ← Back to the menu
+            </Link>
+          </div>
+        </section>
+      </main>
 
       {/* Name dialog */}
       {dialogOpen ? (

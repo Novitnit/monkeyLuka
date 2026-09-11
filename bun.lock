@@ -12,12 +12,9 @@
     "apps/server": {
       "name": "@monkeyluka/server",
       "dependencies": {
-        "@colyseus/playground": "^0.18.4",
         "@colyseus/schema": "^5.0.27",
-        "@elysia/cors": "^1.4.2",
         "@monkeyluka/shared": "workspace:*",
         "colyseus": "^0.18.5",
-        "elysia": "^1.4.30",
       },
     },
     "apps/web": {
@@ -25,7 +22,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@colyseus/sdk": "^0.18.2",
+        "@elysia/cors": "^1.4.2",
         "@monkeyluka/shared": "workspace:*",
+        "elysia": "^1.4.30",
         "next": "16.3.4",
         "phaser": "^4.2.1",
         "react": "19.2.8",
