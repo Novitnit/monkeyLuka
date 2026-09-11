@@ -25,6 +25,16 @@ come from `@monkeyluka/shared`.
   "← Back to the menu" link under the Play button. Once a room is joined the
   screen switches to the fullscreen Phaser mount (which keeps only its own
   Exit button).
+- The jungle client (`src/game/jungle-game.ts`) renders the Tiled map into
+  room containers, then spawns the player via `createPlayer()` from
+  `src/game/player.ts` (sprite sheets `Assets/player/sheets/idle.png`, served
+  via the `public/player` symlink; spawn **96,176** inside the first room). The
+  sprite is a child of the room container so it inherits room scale/position.
+  Tiled loading lives in `src/game/tiled-map.ts` (engine-free: fetches
+  `Assets/map/main.json` + `.tsx` tilesets via the `public/map` symlink) and
+  the Phaser rendering in `src/game/map-renderer.ts` (720×272 rooms, cropped
+  at room edges). `tsconfig.json` excludes `public` so the symlinked assets
+  aren't typechecked.
 
 - **Phaser must be imported dynamically** — its bundle touches `window` at
   module scope, so `createJungleGame()` does `await import("phaser")` (never

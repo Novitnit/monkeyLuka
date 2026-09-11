@@ -18,7 +18,7 @@ Start here, then follow the link that matches what you're working on:
 | `apps/web/AGENTS.md` | `@monkeyluka/web` — Next.js 16 frontend + Elysia REST API under `/api` |
 | `apps/server/AGENTS.md` | `@monkeyluka/server` — Colyseus realtime only, `defineServer` format |
 | `packages/shared/AGENTS.md` | `@monkeyluka/shared` — framework-agnostic shared code |
-| `map/AGENTS.md` | Tiled game-map data + art (not a Bun workspace) |
+| `Assets/` | Tiled game-map data + art (not a Bun workspace; served to the web app via symlinks under `apps/web/public/map` and `apps/web/public/player`) |
 | `discoveries/agents.md` | How to write a discovery note — one file per non-obvious bug/fix |
 
 Read the workspace `AGENTS.md` before editing inside that workspace; read
@@ -39,7 +39,7 @@ monkeyLuka/
 ├── architecture.md       # system architecture: processes, data flow, design decisions
 ├── CLAUDE.md             # navigation entry point → AGENTS.md (Claude Code compat)
 ├── discoveries/          # per-bug root-cause write-ups → discoveries/agents.md
-├── map/                  # tracked Tiled game-map data + art → map/AGENTS.md
+├── Assets/               # tracked Tiled game-map data + art (web-served via public symlinks)
 ├── apps/
 │   ├── web/              # @monkeyluka/web  — Next.js 16 (App Router) frontend + Elysia REST API under /api → apps/web/AGENTS.md
 │   └── server/           # @monkeyluka/server — Colyseus realtime matchmaker + rooms (defineServer) → apps/server/AGENTS.md

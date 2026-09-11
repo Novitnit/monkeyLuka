@@ -1,9 +1,24 @@
 import type Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import type { JungleRoomState } from "@monkeyluka/shared";
+import {
+  ROOM_HEIGHT,
+  ROOM_WIDTH,
+  resolveTiledMap,
+  type RawTiledMap,
+} from "./tiled-map";
+import { renderTiledMap } from "./map-renderer";
+import { createPlayer, PLAYER_TEXTURE } from "./player";
 
 /** A joined jungle room, typed with its synced state. */
 export type JungleRoom = Room<unknown, JungleRoomState>;
+
+/** Where the Tiled map and its tileset assets are served from. */
+const MAP_DIR = "/map";
+const MAP_FILE = "main.json";
+
+/** Where the player sprite sheets are served from. */
+const PLAYER_DIR = "/player";
 
 /**
  * Boot the Phaser jungle client inside `parent` and return the game instance.
@@ -32,55 +47,41 @@ export async function createJungleGame(
       create(this: Phaser.Scene) {
         const { width, height } = this.scale;
 
-        this.cameras.main.setBackgroundColor("#0b0e14");
+        (window as unknown as Record<string, unknown>).__jungleScene = this;
 
-        const title = this.add
-          .text(width / 2, height / 2 - 90, "monkeyLuka", {
-            fontFamily: "sans-serif",
-            fontSize: "56px",
-            fontStyle: "bold",
-            color: "#fafafa",
-          })
-          .setOrigin(0.5);
+        this.cameras.main.setBackgroundColor("#0b0e14");
 
         const me = room.state?.players.get(room.sessionId);
         const name = me?.name ?? "unknown";
 
-        const connected = this.add
-          .text(
-            width / 2,
-            height / 2 + 4,
-            `Connected to the jungle as "${name}"`,
-            {
-              fontFamily: "sans-serif",
-              fontSize: "22px",
-              color: "#fbbf24",
-            },
-          )
-          .setOrigin(0.5);
+        // Load the Tiled map plus the player sprite, then resolve its
+        // tilesets, render the rooms, and drop the player at spawn.
+        this.load.json("jungle-map", `${MAP_DIR}/${MAP_FILE}`);
+        this.load.image(PLAYER_TEXTURE, `${PLAYER_DIR}/sheets/idle.png`);
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          void (async () => {
+            try {
+              const raw = this.cache.json.get("jungle-map") as RawTiledMap;
+              const map = await resolveTiledMap(MAP_DIR, raw);
 
-        this.add
-          .text(width / 2, height / 2 + 44, `room ${room.roomId}`, {
-            fontFamily: "sans-serif",
-            fontSize: "15px",
-            color: "#71717a",
-          })
-          .setOrigin(0.5);
+              const render = renderTiledMap(this, map, {
+                roomWidth: ROOM_WIDTH,
+                roomHeight: ROOM_HEIGHT,
+              });
 
-        this.add
-          .text(width / 2, height / 2 + 110, "Gameplay is being built…", {
-            fontFamily: "sans-serif",
-            fontSize: "15px",
-            color: "#a1a1aa",
-            fontStyle: "italic",
-          })
-          .setOrigin(0.5);
+              (window as unknown as Record<string, unknown>).__jungleRender = render;
+              (window as unknown as Record<string, unknown>).__jungleMap = map;
 
-        this.tweens.add({
-          targets: [title, connected],
-          alpha: { from: 0, to: 1 },
-          duration: 400,
+              // Drop the player into the first (only) room at spawn.
+              const player = createPlayer(this, render.rooms[0]);
+              (window as unknown as Record<string, unknown>).__junglePlayer =
+                player.sprite;
+            } catch (err) {
+              console.error("Failed to load the jungle map:", err);
+            }
+          })();
         });
+        this.load.start();
       },
     },
   });
