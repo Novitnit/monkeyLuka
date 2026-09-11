@@ -46,7 +46,9 @@ straight to Elysia.
 - Routes: `GET /api` (project info), `GET /api/health` (HealthStatus).
 - `export const dynamic = "force-dynamic"` keeps route handlers un-prerendered
   so `/api/health` reports live uptime.
-- CORS uses `ALLOWED_ORIGIN_HOST` (same env var as `allowedDevOrigins` below);
+- CORS uses `ALLOWED_ORIGIN_HOST`, a comma-separated host allowlist compiled
+  by `compileOriginAllowlist()` in `@monkeyluka/shared` (same env var +
+  semantics as the Colyseus handshake gate and `allowedDevOrigins` below);
   Next 16 normalizes `/api/` → `/api`, Elysia matches both.
 
 ## Commands

@@ -39,11 +39,13 @@ defineServer({
 Env defaults: `COLYSEUS_PORT=2567`, `HOST=0.0.0.0`. Override via env or `.env`
 files (Bun auto-loads `.env` in this dir; see `.env.example`).
 
-`ALLOWED_ORIGIN_HOST` (default `"*"`) is compiled into a regex used for the
-Colyseus WebSocket handshake only: `WebSocketTransport.beforeUpgrade` rejects
-browser origins that don't match; non-browser clients with no `Origin` header
-(e.g. smoke-test scripts) pass. The same env var feeds the web app's Elysia
-CORS — set it in `apps/web/.env` too.
+`ALLOWED_ORIGIN_HOST` gates the Colyseus WebSocket handshake:
+`WebSocketTransport.beforeUpgrade` rejects browser origins that don't match;
+non-browser clients with no `Origin` header (e.g. smoke-test scripts) pass.
+It is a **comma-separated host allowlist** (e.g. `localhost,192.168.1.109`);
+`*` or unset allows any origin. Compiled by `compileOriginAllowlist()` in
+`@monkeyluka/shared` — the same helper + env var feed the web app's Elysia
+CORS, so set it in `apps/web/.env` too.
 
 ## Room state schema
 

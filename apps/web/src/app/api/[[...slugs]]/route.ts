@@ -1,6 +1,11 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysia/cors";
-import { APP_NAME, greeting, type HealthStatus } from "@monkeyluka/shared";
+import {
+  APP_NAME,
+  compileOriginAllowlist,
+  greeting,
+  type HealthStatus,
+} from "@monkeyluka/shared";
 
 // Elysia's official "Integration with Next.js" pattern: the whole Elysia app
 // mounts inside the App Router's catch-all route handler, and each HTTP
@@ -11,10 +16,10 @@ import { APP_NAME, greeting, type HealthStatus } from "@monkeyluka/shared";
 // /api/health reports a live uptime instead of a prerendered value.
 export const dynamic = "force-dynamic";
 
-const allowedOriginHost = process.env.ALLOWED_ORIGIN_HOST ?? "*";
-const ALLOWED_ORIGIN = new RegExp(
-  `^https?://${allowedOriginHost.replaceAll(".", "\\.")}(?::\\d+)?$`,
-);
+// Comma-separated host allowlist (same env var + semantics as the Colyseus
+// WebSocket handshake gate in apps/server and Next's allowedDevOrigins).
+// `*` (or unset) allows any origin.
+const ALLOWED_ORIGIN = compileOriginAllowlist(process.env.ALLOWED_ORIGIN_HOST);
 
 const app = new Elysia({ prefix: "/api" })
   .use(cors({ origin: ALLOWED_ORIGIN }))

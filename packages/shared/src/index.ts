@@ -44,3 +44,30 @@ export interface HealthStatus {
   service: string;
   uptime: number;
 }
+
+/**
+ * Compile the `ALLOWED_ORIGIN_HOST` allowlist into the matcher used to gate
+ * browser origins (the Colyseus WebSocket handshake and the Elysia `/api`
+ * CORS).
+ *
+ * Accepts a comma-separated list of hosts — e.g. `"localhost,192.168.1.109"`
+ * (matching how `next.config.ts` reads `allowedDevOrigins`). Each entry
+ * matches `http(s)://<host>[:port]`; a literal `*` entry, or an empty/unset
+ * value, means "allow any origin" (returns `true`).
+ */
+export function compileOriginAllowlist(raw: string | undefined): RegExp | true {
+  const hosts = (raw ?? "*")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+  if (hosts.length === 0 || hosts.includes("*")) {
+    return true;
+  }
+
+  const sources = hosts.map(
+    (host) =>
+      `https?://${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::\\d+)?`,
+  );
+  return new RegExp(`^(?:${sources.join("|")})$`);
+}

@@ -1,20 +1,20 @@
 import { createRouter, defineRoom, defineServer, playground, WebSocketTransport } from "colyseus";
-import { ROOM_NAMES } from "@monkeyluka/shared";
+import { compileOriginAllowlist, ROOM_NAMES } from "@monkeyluka/shared";
 import { JungleRoom } from "./rooms/jungle-room";
 
 const colyseusPort = Number(Bun.env.COLYSEUS_PORT ?? 2567);
 const hostname = Bun.env.HOST ?? "0.0.0.0";
-const allowedOriginHost = Bun.env.ALLOWED_ORIGIN_HOST ?? "*";
-const ALLOWED_ORIGIN = new RegExp(
-  `^https?://${allowedOriginHost.replaceAll(".", "\\.")}(?::\\d+)?$`,
-);
+// Comma-separated host allowlist (e.g. `localhost,192.168.1.109`); `*` (or
+// unset) allows any browser origin. Shared with the web app's Elysia CORS
+// and Next's allowedDevOrigins.
+const ALLOWED_ORIGIN = compileOriginAllowlist(Bun.env.ALLOWED_ORIGIN_HOST);
 
 const gameServer = defineServer({
   greet: false,
   transport: new WebSocketTransport({
     beforeUpgrade: (request) => {
       const origin = request.headers.get("origin");
-      if (origin && !ALLOWED_ORIGIN.test(origin)) {
+      if (origin && ALLOWED_ORIGIN !== true && !ALLOWED_ORIGIN.test(origin)) {
         return new Response(null, { status: 403 });
       }
     },

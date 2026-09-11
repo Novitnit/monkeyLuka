@@ -137,9 +137,11 @@ defineServer({
     clamping the name with `MAX_PLAYER_NAME_LENGTH`.
   - `onLeave` → delete the session's entry; `onDispose` → clear all.
   - `maxClients = 20` is a soft cap until real matchmaking/filtering lands.
-- **Origin gate**: `ALLOWED_ORIGIN_HOST` (default `"*"`) compiles to a regex
-  applied in `beforeUpgrade` — browser clients whose `Origin` doesn't match
-  get a 403. Non-browser clients without an `Origin` header pass.
+- **Origin gate**: `ALLOWED_ORIGIN_HOST` is a **comma-separated host
+  allowlist** compiled by `compileOriginAllowlist()` in `@monkeyluka/shared`
+  (default `*` / unset = any origin) and applied in `beforeUpgrade` — browser
+  clients whose `Origin` doesn't match get a 403. Non-browser clients without
+  an `Origin` header pass.
 - There is **no REST API here**. The old standalone Elysia `:3001` process
   was removed; HTTP lives in the web app (§7). Keep it that way.
 
@@ -190,7 +192,8 @@ using Elysia's official Next.js integration:
   `HealthStatus`).
 - `export const dynamic = "force-dynamic"` keeps route handlers un-prerendered
   so `/api/health` reports real uptime.
-- CORS uses `ALLOWED_ORIGIN_HOST` compiled to a regex (same env var as the
+- CORS uses `ALLOWED_ORIGIN_HOST` compiled by `compileOriginAllowlist()` in
+  `@monkeyluka/shared` (comma-separated host allowlist; same env var as the
   Colyseus handshake gate and Next's `allowedDevOrigins`).
 - Next 16 normalizes `/api/` → `/api`; Elysia matches both.
 
@@ -202,7 +205,11 @@ using Elysia's official Next.js integration:
   `NEXT_PUBLIC_COLYSEUS_ENDPOINT`.
 - `ALLOWED_ORIGIN_HOST` gates three things at once: the Colyseus WebSocket
   handshake, the Elysia `/api` CORS, and Next 16's `allowedDevOrigins`
-  (Next blocks non-localhost dev origins otherwise).
+  (Next blocks non-localhost dev origins otherwise). It is a comma-separated
+  host allowlist (`*` or unset = any origin) — e.g.
+  `localhost,192.168.1.109` keeps both localhost and LAN dev working; the
+  Colyseus gate + Elysia CORS compile it via `compileOriginAllowlist()` in
+  `@monkeyluka/shared`, Next parses it itself in `next.config.ts`.
 - Set it in **both** `apps/server/.env` and `apps/web/.env`.
 
 ## 8. Environment variables
@@ -211,7 +218,7 @@ using Elysia's official Next.js integration:
 |---|---|---|---|
 | `COLYSEUS_PORT` | server | `2567` | Colyseus listen port |
 | `HOST` | server | `0.0.0.0` | Colyseus bind host |
-| `ALLOWED_ORIGIN_HOST` | server + web | `"*"` | Origin regex for WS handshake, `/api` CORS, and Next dev origins |
+| `ALLOWED_ORIGIN_HOST` | server + web | `"*"` (any) | Comma-separated host allowlist for WS handshake, `/api` CORS, and Next dev origins; `*`/unset = allow any |
 | `NEXT_PUBLIC_COLYSEUS_ENDPOINT` | web | `ws://<hostname>:2567` | Browser-side Colyseus endpoint override |
 
 `.env` files are gitignored; `.env.example` files are committed.

@@ -45,6 +45,10 @@ place because every tsconfig here uses `"moduleResolution": "bundler"`
 - **web** — imports `JungleState` (as the SDK join root-schema), `ROOM_NAMES`,
   `MAX_PLAYER_NAME_LENGTH`. Turbopack doesn't follow bare `.ts` exports on its
   own, so `@monkeyluka/shared` is in `transpilePackages` in `apps/web/next.config.ts`.
+- **server + web** — `compileOriginAllowlist(rawHosts)` compiles the shared
+  `ALLOWED_ORIGIN_HOST` env var (comma-separated host allowlist; `*`/unset =
+  any origin) into the matcher for the Colyseus WebSocket handshake gate and
+  the Elysia `/api` CORS. Keep it framework-agnostic (pure string/RegExp).
 
 ## Commands
 
