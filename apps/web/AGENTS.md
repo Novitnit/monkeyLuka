@@ -27,14 +27,28 @@ come from `@monkeyluka/shared`.
   Exit button).
 - The jungle client (`src/game/jungle-game.ts`) renders the Tiled map into
   room containers, then spawns the player via `createPlayer()` from
-  `src/game/player.ts` (sprite sheets `Assets/player/sheets/idle.png`, served
+  `src/game/player/player.ts` (sprite sheets `Assets/player/sheets/idle.png`, served
   via the `public/player` symlink; spawn **96,176** inside the first room). The
   sprite is a child of the room container so it inherits room scale/position.
-  Tiled loading lives in `src/game/tiled-map.ts` (engine-free: fetches
+  Tiled loading lives in `src/game/map/tiled-map.ts` (engine-free: fetches
   `Assets/map/main.json` + `.tsx` tilesets via the `public/map` symlink) and
-  the Phaser rendering in `src/game/map-renderer.ts` (720×272 rooms, cropped
+  the Phaser rendering in `src/game/map/map-renderer.ts` (720×272 rooms, cropped
   at room edges). `tsconfig.json` excludes `public` so the symlinked assets
   aren't typechecked.
+- Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
+  like `tiled-map.ts`)
+  extracts collision geometry from the `layer1` tiles — 57/109/110 tiles
+  form one solid block wherever adjacent (a 57 side bordering a slope emits
+  no straight edge; the slope line takes over that boundary). Blocks are
+  traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
+  for vertical; `side` tells which side the solid is on) plus the 109/110
+  diagonal lines. **Collision ignores a layer's `visible` flag** — the
+  hidden `layer1` is still parsed by `resolveTiledMap` and used; the renderer
+  (`map-renderer.ts`) is what skips `visible: false` layers.
+  `src/game/collision/collision-debug.ts` draws those as a Phaser overlay (green
+  vertical walls, blue horizontal floors, orange slopes), toggleable via
+  `__jungleCollisionDebug.setEnabled(false)`; `createJungleGame` takes
+  `{ collisionDebug?: boolean }` (default on).
 
 - **Phaser must be imported dynamically** — its bundle touches `window` at
   module scope, so `createJungleGame()` does `await import("phaser")` (never

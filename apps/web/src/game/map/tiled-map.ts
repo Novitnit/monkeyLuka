@@ -28,9 +28,14 @@ export interface TiledTileset {
   rows: number;
 }
 
-/** A visible tile layer; `gids` is row-major, top-left first. */
+/**
+ * A tile layer; `gids` is row-major, top-left first. `visible` mirrors the
+ * Tiled flag: the renderer skips hidden layers, but collision geometry is
+ * built regardless (the `layer1` collision layer is typically hidden).
+ */
 export interface TiledTileLayer {
   name: string;
+  visible: boolean;
   width: number;
   height: number;
   gids: number[];
@@ -240,12 +245,15 @@ export async function resolveTiledMap(
 
   const layers: TiledTileLayer[] = [];
   for (const layer of raw.layers ?? []) {
-    if (layer.type !== "tilelayer" || layer.visible === false) continue;
+    if (layer.type !== "tilelayer") continue;
     const width = layer.width ?? raw.width;
     const height = layer.height ?? raw.height;
     const data = layer.data ?? [];
     layers.push({
       name: layer.name ?? "layer",
+      // Keep hidden layers so collision can still read them; rendering
+      // filters on `visible` on its own.
+      visible: layer.visible !== false,
       width,
       height,
       gids:

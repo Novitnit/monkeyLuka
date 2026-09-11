@@ -78,6 +78,7 @@ function renderRoom(
   const originY = row * roomHeight;
 
   for (const layer of map.layers) {
+    if (!layer.visible) continue;
     for (let tileY = 0; tileY < layer.height; tileY++) {
       for (let tileX = 0; tileX < layer.width; tileX++) {
         const gid = layer.gids[tileY * layer.width + tileX];

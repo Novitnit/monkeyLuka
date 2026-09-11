@@ -6,9 +6,11 @@ import {
   ROOM_WIDTH,
   resolveTiledMap,
   type RawTiledMap,
-} from "./tiled-map";
-import { renderTiledMap } from "./map-renderer";
-import { createPlayer, PLAYER_TEXTURE } from "./player";
+} from "./map/tiled-map";
+import { renderTiledMap } from "./map/map-renderer";
+import { createPlayer, PLAYER_TEXTURE } from "./player/player";
+import { buildCollisionGeometry } from "./collision/collision-geometry";
+import { createCollisionDebug } from "./collision/collision-debug";
 
 /** A joined jungle room, typed with its synced state. */
 export type JungleRoom = Room<unknown, JungleRoomState>;
@@ -20,6 +22,16 @@ const MAP_FILE = "main.json";
 /** Where the player sprite sheets are served from. */
 const PLAYER_DIR = "/player";
 
+/** Options for booting the jungle game. */
+export interface JungleGameOptions {
+  /**
+   * Draw the collision-geometry debug lines (green vertical walls, blue
+   * horizontal floors, orange slopes). Default true — disable via
+   * `__jungleCollisionDebug.setEnabled(false)` or pass false here.
+   */
+  collisionDebug?: boolean;
+}
+
 /**
  * Boot the Phaser jungle client inside `parent` and return the game instance.
  *
@@ -30,6 +42,7 @@ const PLAYER_DIR = "/player";
 export async function createJungleGame(
   parent: HTMLElement,
   room: JungleRoom,
+  options: JungleGameOptions = {},
 ): Promise<Phaser.Game> {
   const Phaser = await import("phaser");
 
@@ -76,6 +89,26 @@ export async function createJungleGame(
               const player = createPlayer(this, render.rooms[0]);
               (window as unknown as Record<string, unknown>).__junglePlayer =
                 player.sprite;
+
+              // Collision debug overlay: boundary edges of the collision
+              // blocks (green = vertical wall edges, blue = horizontal floor
+              // edges) plus the 109/110 slope lines (orange) where they take
+              // over a block boundary. The geometry is the future collision
+              // input.
+              const collision = buildCollisionGeometry(map);
+              const collisionDebug = createCollisionDebug(
+                this,
+                map,
+                render.rooms,
+                collision,
+                {
+                  enabled: options.collisionDebug ?? true,
+                },
+              );
+              (window as unknown as Record<string, unknown>).__jungleCollision =
+                collision;
+              (window as unknown as Record<string, unknown>).__jungleCollisionDebug =
+                collisionDebug;
             } catch (err) {
               console.error("Failed to load the jungle map:", err);
             }
