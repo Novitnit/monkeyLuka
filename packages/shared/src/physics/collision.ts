@@ -8,11 +8,39 @@
 import {
   TILE_SIZE,
   TILE_SLOPE_BR,
+  TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
+  TILE_STAIRS,
 } from "./tiles";
 import type { SolidGrid } from "./tiles";
+
+/**
+ * Bitmask rows of the TILE_STAIRS (288) staircase, row-major from the
+ * cell's top; bit c (0..15, LSB = column 0) marks that pixel column solid
+ * in the row. Rows 0-7 carry one 2px tread each, stepping down from the
+ * top-right (cols 14-15) to the bottom-left (cols 0-1); column 15 is a
+ * full-height right wall, column 0 a wall from row 7 down; row 15 is the
+ * fully solid base. Everything between a tread and the base is OPEN — the
+ * inferred hollow interior.
+ */
+const STAIRS_MASK: readonly number[] = [
+  0xc000, 0xb000, 0x8c00, 0x8300, // rows 0-3: treads 14-15, 12-13, 10-11, 8-9
+  0x80c0, 0x8030, 0x800c, 0x8003, // rows 4-7: treads 6-7, 4-5, 2-3, 0-1
+  0x8001, 0x8001, 0x8001, 0x8001, // rows 8-11: left wall + right wall only
+  0x8001, 0x8001, 0x8001, 0xffff, // rows 12-14: walls; row 15: full base
+];
+
+/**
+ * Topmost solid pixel row at column `c` of the stairs mask (0..15): the
+ * treads' tops step up one row every two columns, from row 7 at the left
+ * (cols 0-1) to row 0 at the right (cols 14-15). The box's landing /
+ * support surface sits at that row (the tread's top edge).
+ */
+function stairsTopRow(c: number): number {
+  return 7 - Math.floor(c / 2);
+}
 
 /**
  * Tolerance for "the collider's bottom edge is on the slope surface" — a
@@ -54,6 +82,13 @@ function pointInTileSolid(
   const dy = y - ty * TILE_SIZE;
   if (kind === TILE_SLOPE_TL_BR) return dy <= dx;
   if (kind === TILE_SLOPE_TR_BL) return dx + dy <= TILE_SIZE;
+  if (kind === TILE_SLOPE_SHALLOW) return dx + 2 * dy >= 2 * TILE_SIZE;
+  if (kind === TILE_STAIRS) {
+    // Pixel mask: a point is solid inside any solid pixel (16px per tile).
+    const col = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dx)));
+    const row = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dy)));
+    return ((STAIRS_MASK[row] ?? 0) & (1 << col)) !== 0;
+  }
   // TILE_SLOPE_BR — the mirror of 109, solid below the same line.
   return dx + dy >= TILE_SIZE;
 }
@@ -92,6 +127,29 @@ function aabbTouchesSolid(
   if (kind === TILE_SLOPE_TR_BL) {
     // Solid where dx + dy ≤ TILE_SIZE: reachable iff the lowest corner is.
     return ox0 + oy0 <= TILE_SIZE;
+  }
+  if (kind === TILE_SLOPE_SHALLOW) {
+    // Solid where dx + 2·dy ≥ 2·TILE_SIZE (the 2:1 ramp below the line
+    // from the bottom-left corner to the right edge's midpoint): dx + 2·dy
+    // is maximized at the top-right corner of the overlap, so reachable
+    // iff that corner is solid.
+    return ox1 + 2 * oy1 >= 2 * TILE_SIZE;
+  }
+  if (kind === TILE_STAIRS) {
+    // Pixel mask: the overlap rect [ox0,ox1]×[oy0,oy1] touches solid iff
+    // any solid pixel (c, r) — covering [c, c+1) × [r, r+1) — intersects
+    // it: columns c ∈ [⌊ox0⌋, ⌈ox1⌉−1], rows likewise. This gives the
+    // walls/treads via the mask and leaves the hollow interior open.
+    const c0 = Math.max(0, Math.floor(ox0));
+    const c1 = Math.min(TILE_SIZE - 1, Math.ceil(ox1) - 1);
+    const r0 = Math.max(0, Math.floor(oy0));
+    const r1 = Math.min(TILE_SIZE - 1, Math.ceil(oy1) - 1);
+    if (c1 < c0 || r1 < r0) return false;
+    const cols = ((1 << (c1 - c0 + 1)) - 1) << c0;
+    for (let r = r0; r <= r1; r++) {
+      if (((STAIRS_MASK[r] ?? 0) & cols) !== 0) return true;
+    }
+    return false;
   }
   // TILE_SLOPE_BR — solid where dx + dy ≥ TILE_SIZE: reachable iff the
   // highest corner is.
@@ -168,21 +226,59 @@ function slopeSupportsBox(
   dyBottom: number,
 ): boolean {
   // 110 (dy ≤ dx) and 109 (dy ≤ TILE_SIZE − dx) have a solid top edge the
-  // whole way across — a box resting on it is standing on the tile.
-  if (kind !== TILE_SLOPE_BR && dyBottom <= SLOPE_TOUCH_EPS) return true;
+  // whole way across — a box resting on it is standing on the tile. 287 has
+  // no flat lip (its face only reaches the top at the far-right corner), so
+  // it is exempt like 262.
+  if (
+    kind !== TILE_SLOPE_BR &&
+    kind !== TILE_SLOPE_SHALLOW &&
+    kind !== TILE_STAIRS &&
+    dyBottom <= SLOPE_TOUCH_EPS
+  ) {
+    return true;
+  }
   // A bottom below the cell means the box is under the tile, not riding it.
   if (dyBottom > TILE_SIZE) return false;
   // The surface depth across the box's span runs [minSurf, maxSurf]: 110
   // (`dy = dx`) deepens rightward (dx0 → dx1), 109/262 (`dy = 16 − dx`)
-  // deepen leftward (16 − dx1 → 16 − dx0). The box rides when its bottom
+  // deepen leftward (16 − dx1 → 16 − dx0), and 287 (`dy = (16 − dx)/2`)
+  // deepens leftward at half the rate ((16 − dx1)/2 → (16 − dx0)/2). The
+  // box rides when its bottom
   // edge sits on that line somewhere along the span — a climber dips a
   // substep below the shallow end (dyBottom ≥ minSurf − SLOPE_RIDE_TOL)
   // before the vertical pass lifts it back, and a rider never sinks below
   // the deepest surface point. A box whose bottom is *below* that deepest
   // point (an overhang under-runner whose top clips the face from the
   // side) is a wall contact, not a ride.
-  const minSurf = kind === TILE_SLOPE_TL_BR ? dx0 : TILE_SIZE - dx1;
-  const maxSurf = kind === TILE_SLOPE_TL_BR ? dx1 : TILE_SIZE - dx0;
+  let minSurf: number;
+  let maxSurf: number;
+  if (kind === TILE_SLOPE_TL_BR) {
+    minSurf = dx0;
+    maxSurf = dx1;
+  } else if (kind === TILE_SLOPE_SHALLOW) {
+    minSurf = TILE_SIZE - dx1 / 2;
+    maxSurf = TILE_SIZE - dx0 / 2;
+  } else if (kind === TILE_STAIRS) {
+    // 288 staircase: the surface is the stepped tread tops (topRow(c) =
+    // 7 − ⌊c/2⌋ — deepest at the left, shallowest at the right). minSurf
+    // is the rightmost tread under the span (the binding corner), maxSurf
+    // the leftmost — the same ride-on-the-leading-corner band as 262/287:
+    // a box on the steps rests on the rightmost tread and is lifted one
+    // riser at a time as it advances, never wall-blocked mid-climb. The
+    // upper allowance is one riser wider than 262/287's: a walker arriving
+    // from a sealing 287 ramp sits at 287's apex (dy = 8) — 1px BELOW
+    // 288's left foot (dy = 7) — and must be allowed onto the tread so the
+    // vertical pass can settle it; without the extra pixel the horizontal
+    // pass reads the left wall's top row as a face and the walker jams at
+    // the seam (see discovery notes on the 287 → 288 ramp pair).
+    const c0 = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dx0)));
+    const c1 = Math.max(0, Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1));
+    minSurf = stairsTopRow(c1);
+    maxSurf = stairsTopRow(c0) + 1;
+  } else {
+    minSurf = TILE_SIZE - dx1;
+    maxSurf = TILE_SIZE - dx0;
+  }
   return (
     dyBottom >= minSurf - SLOPE_RIDE_TOL &&
     dyBottom <= maxSurf + SLOPE_TOUCH_EPS
@@ -256,6 +352,11 @@ export function horizontalPenetration(
       // box meets the cap's rightmost extent (16 − dyTop).
       // 262 (dy ≥ 16−dx, mirror): a right-moving box meets the wedge face
       // at 16 − dyBottom; a left-moving box meets the solid right column.
+      // 287 (dx + 2·dy ≥ 32): 262 at half the rise — the face is at
+      // 32 − 2·dyBottom, clamped to the tile's left edge once the box's
+      // bottom is below the cell (the base row is fully solid there), or
+      // the shove-back would overshoot the shallow face; left-moving meets
+      // the solid right column below the apex — the back side.
       let pen: number;
       if (kind === TILE_SLOPE_TL_BR) {
         pen =
@@ -267,6 +368,50 @@ export function horizontalPenetration(
           dir > 0
             ? dx1
             : Math.max(0, TILE_SIZE - dyTop - dx0);
+      } else if (kind === TILE_SLOPE_SHALLOW) {
+        // 287 (dx + 2·dy ≥ 32): the wedge face runs dx = 32 − 2·dy — at
+        // the box's deepest row it is half as far left as 262's. A
+        // right-mover meets it there (`32 − 2·dyBottom`); when the box's
+        // bottom is below the cell (the base row is fully solid there) the
+        // contact is clamped to the tile's left edge or the push would
+        // shove a low box ~24px back from a shallow face. A left-mover
+        // meets the back side — the solid right column below the apex
+        // (dy ≥ 8), the same right column 262 has from its top — so it is
+        // pushed back the full-cell distance, like 262.
+        pen =
+          dir > 0
+            ? Math.max(
+                0,
+                dx1 - Math.max(0, 2 * TILE_SIZE - 2 * dyBottom),
+              )
+            : Math.max(0, TILE_SIZE - dx0);
+      } else if (kind === TILE_STAIRS) {
+        // 288 staircase — a pixel mask, not a single face: the box meets
+        // the shape at the nearest solid pixel column in the rows its
+        // leading edge spans (right-mover: the leftmost solid column,
+        // left-mover: the rightmost), and the deepest overlapped row wins.
+        // A wall face and a tread face resolve by the same nearest-column
+        // rule; a box riding the stepped surface was exempted above.
+        const col0 = Math.max(0, Math.floor(dx0));
+        const col1 = Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1);
+        const row0 = Math.max(0, Math.floor(dyTop));
+        const row1 = Math.min(TILE_SIZE - 1, Math.ceil(dyBottom) - 1);
+        const cols = ((1 << (col1 - col0 + 1)) - 1) << col0;
+        for (let r = row0; r <= row1; r++) {
+          const bits = (STAIRS_MASK[r] ?? 0) & cols;
+          if (bits === 0) continue;
+          let c = dir > 0 ? col0 : col1;
+          if (dir > 0) {
+            while (((bits >> c) & 1) === 0) c++;
+            const penRow = Math.max(0, x + hw - (left + c));
+            if (penRow > maxPen) maxPen = penRow;
+          } else {
+            while (((bits >> c) & 1) === 0) c--;
+            const penRow = Math.max(0, left + c + 1 - (x - hw));
+            if (penRow > maxPen) maxPen = penRow;
+          }
+        }
+        pen = 0; // rows already folded into maxPen; keep the shared check inert
       } else {
         pen =
           dir > 0
@@ -289,7 +434,10 @@ export function horizontalPenetration(
  * edge) and 109's falls rightward (surface y = top + TILE_SIZE − dx,
  * deepest at the min x). 262 is the mirror — the solid hangs below the
  * same TR→BL line, so its landing surface IS the line and both directions
- * sample it.
+ * sample it. 287 is 262 at half the rise: the landing surface is its own
+ * 2:1 line (sampled at the shallowest extent), while its underside is flat
+ * — the wedge reaches the cell's bottom edge at every column, so a rising
+ * box contacts the cell bottom, never the sloped face.
  */
 export function verticalPenetration(
   grid: SolidGrid,
@@ -362,6 +510,46 @@ export function verticalPenetration(
           } else {
             continue;
           }
+        }
+      } else if (kind === TILE_SLOPE_SHALLOW) {
+        // 287 (dx + 2·dy ≥ 32): the solid hangs below the 2:1 line that
+        // runs from the cell's bottom-left corner (0, 16) to the right
+        // edge's midpoint (16, 8), so its landing surface IS that line,
+        // sampled at the box's shallowest extent (rightmost/edgeMax) — the
+        // same ride-on-the-leading-corner rule as 262 (sampling the deepest
+        // point would bury the box under the rising slope). The underside,
+        // however, is flat: the wedge fills the cell down to its bottom
+        // edge at every column (dx + 2·16 ≥ 32 always), so a box rising
+        // from below (ceiling) contacts the cell's bottom edge, never the
+        // sloped face. The back side is the fully-solid right column below
+        // the apex (dx = 16, dy ≥ 8), which 262 already gets from its top.
+        // `dir > 0` skips boxes whose bottom is below the CELL (like 262):
+        // the base row is solid the whole way across (dx + 2·16 ≥ 32 for
+        // every dx), so the foot sits flush with the cell's bottom edge — a
+        // floor-level walker at the foot IS at the ramp's base and is
+        // lifted onto the face as it advances (a ground-level walk-on ramp,
+        // not a step to hop onto). Riders and climbers sit at or below the
+        // surface with at most a substep of dip, well inside the tolerance.
+        if (dir > 0 && bottomRel > TILE_SIZE + SLOPE_TOUCH_EPS) continue;
+        surfaceY = dir > 0 ? top + TILE_SIZE - edgeMax / 2 : top + TILE_SIZE;
+      } else if (kind === TILE_STAIRS) {
+        // 288 staircase: landing binds the topmost tread under the moving
+        // edge — the shallowest point of the stepped surface, sampled at
+        // the box's rightmost column (topRow(c) = 7 − ⌊c/2⌋), the same
+        // ride-on-the-leading-corner rule as 262/287. The underside is
+        // flat: the base row is solid at every column, so a rising box
+        // contacts the cell's bottom edge, never the treads. `dir > 0`
+        // skips boxes whose bottom is below the cell (an overhang
+        // under-runner), like 262/287.
+        if (dir > 0 && bottomRel > TILE_SIZE + SLOPE_TOUCH_EPS) continue;
+        if (dir > 0) {
+          const c1 = Math.max(
+            0,
+            Math.min(TILE_SIZE - 1, Math.ceil(edgeMax) - 1),
+          );
+          surfaceY = top + stairsTopRow(c1);
+        } else {
+          surfaceY = top + TILE_SIZE;
         }
       } else {
         // 262 (mirror of 109): the solid hangs BELOW the same TR→BL line,

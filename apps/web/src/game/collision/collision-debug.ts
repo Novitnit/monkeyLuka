@@ -2,8 +2,8 @@
  * Phaser debug overlay for the collision geometry: draws every boundary edge
  * of the collision blocks on top of the map, clipped to each room the same
  * way the tiles are. Horizontal edges (floors) are blue, vertical edges
- * (walls) are green, and the 109/110 slope lines (orange) take over the
- * block boundary wherever they touch a 57 tile.
+ * (walls) are green, and the 110/109/262/287 slope lines (orange) take over
+ * the block boundary wherever they touch a 57 tile.
  *
  * The lines are children of their room containers, so they inherit the
  * room's scale/position. They are visible by default and can be toggled at

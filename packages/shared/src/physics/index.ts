@@ -28,6 +28,17 @@
  *         is solid when dx + dy ≤ 16 (the half above the descending line).
  * - 262 – diagonal tile, solid on its bottom-right half (the mirror of 109,
  *         same TR → BL line); a point is solid when dx + dy ≥ 16.
+ * - 287 – shallow diagonal tile, the 2:1 ramp (16px run, 8px rise): solid
+ *         below the line from the bottom-left corner (0, 16) to the right
+ *         edge's midpoint (16, 8) — the ramp sits flush on the tile's
+ *         bottom edge, with a solid back column under the apex;
+ *         a point is solid when dx + 2·dy ≥ 32.
+ * - 288 – staircase tile (a pixel mask, see STAIRS_MASK in collision.ts):
+ *         eight 2px-wide treads stepping down from the top-right to the
+ *         bottom-left (the mirror of 287, so a 287 + 288 pair forms a
+ *         continuous 32px ramp), plus a full-height right wall, a left
+ *         wall from mid-height down, and a fully solid base row — the
+ *         interior between the treads and the base is open.
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */

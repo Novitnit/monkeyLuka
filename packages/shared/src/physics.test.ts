@@ -13,9 +13,11 @@ import {
   PLAYER_SPAWN,
   TILE_SIZE,
   TILE_SLOPE_BR,
+  TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
+  TILE_STAIRS,
   buildTileGrid,
   createPlayerState,
   gridPixelSize,
@@ -65,13 +67,14 @@ function settle(grid: SolidGrid, x: number, y: number) {
 describe("tile grid", () => {
   test("builds kinds from gids and ignores non-solid tiles", () => {
     const grid = buildTileGrid(
-      layer(5, 1, [0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR]),
+      layer(6, 1, [0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR, TILE_STAIRS]),
     );
     expect(grid.kinds[0]).toBe(0);
     expect(grid.kinds[1]).toBe(TILE_SOLID);
     expect(grid.kinds[2]).toBe(TILE_SLOPE_TL_BR);
     expect(grid.kinds[3]).toBe(TILE_SLOPE_TR_BL);
     expect(grid.kinds[4]).toBe(TILE_SLOPE_BR);
+    expect(grid.kinds[5]).toBe(TILE_STAIRS);
   });
 
   test("point solidity respects the exact slope halves", () => {
@@ -385,6 +388,352 @@ describe("slopes", () => {
   });
 });
 
+describe("shallow ramp (287, 2:1)", () => {
+  test("point solidity respects the bottom-aligned line (dx + 2·dy ≥ 32)", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_SLOPE_SHALLOW]));
+    // Solid below the line from the bottom-left corner (0, 16) to the
+    // right edge's midpoint (16, 8) — the ramp sits flush on the cell's
+    // bottom edge, and the right column below the apex is the solid back
+    // side. Open above the face (the old model mirrored this shape into
+    // the top half: solid from (0, 8) to (16, 0)).
+    expect(isPointSolid(grid, 0.4, 15.8)).toBe(true); // left base, on the line near the bottom edge
+    expect(isPointSolid(grid, 15.9, 8.05)).toBe(true); // near the apex
+    expect(isPointSolid(grid, 8, 12)).toBe(true); // mid-span on the line
+    expect(isPointSolid(grid, 2, 15)).toBe(true); // 2 + 30 = 32 ≥ 32, on the line
+    expect(isPointSolid(grid, 2, 14)).toBe(false); // 30 < 32, open above the face
+    expect(isPointSolid(grid, 0, 15)).toBe(false); // above the left base
+    expect(isPointSolid(grid, 15, 9)).toBe(true); // back side below the apex
+    expect(isPointSolid(grid, 15, 6)).toBe(false); // above the apex: the top-right corner is open
+    expect(isPointSolid(grid, 8, 4)).toBe(false); // 8 + 8 = 16 < 32 — the old mirror's top is gone
+    expect(isPointSolid(grid, 3, 12)).toBe(false); // 27 < 32 — solid under the old model, open now
+    expect(isPointSolid(grid, 12, 14)).toBe(true); // deep, solid
+  });
+
+  test("box solidity reports touches with the bottom-aligned wedge", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_SLOPE_SHALLOW]));
+    // The solid is below the line dx + 2·dy = 32, maximized at the
+    // overlap's bottom-right corner (ox1, oy1): reachable iff it is solid.
+    expect(isBoxSolid(grid, 16, 12, 10, 10)).toBe(true); // deep right side
+    expect(isBoxSolid(grid, 2, 2, 4, 4)).toBe(false); // tucked open top-left
+    expect(isBoxSolid(grid, 14, 3, 4, 4)).toBe(false); // over the apex — open where the old mirror was solid
+    expect(isBoxSolid(grid, 4, 12, 6, 6)).toBe(true); // low band is solid
+  });
+
+  test("lands on the 2:1 ramp surface, not the cell's flat top", () => {
+    // 287 at (2,2), sitting flush on a solid floor (row 3) so the mass is
+    // closed: the face runs from the cell's bottom-left corner (32, 48) to
+    // the right edge's midpoint (48, 40). There is no flat lip — a falling
+    // box rests on the line itself.
+    const grid = buildTileGrid(layer(4, 4, [
+      0, 0, 0, 0,
+      0, 0, 0, 0,
+      0, 0, TILE_SLOPE_SHALLOW, 0,
+      TILE_SOLID, TILE_SOLID, TILE_SOLID, TILE_SOLID,
+    ]));
+    const state = createPlayerState(config);
+    state.x = 2.5 * TILE_SIZE;
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 600; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    // Binds the line at its shallowest point under the span (the right
+    // edge, dx = 14.5): bottom = 32 + (16 − 14.5/2) = 40.75 → center 33.75.
+    expect(state.y).toBeCloseTo(
+      2 * TILE_SIZE + (TILE_SIZE - 14.5 / 2) - config.height / 2,
+      1,
+    );
+  });
+
+  test("a floor-level walker steps straight onto the ramp at its flush foot", () => {
+    // Ramp at (2,2) on a solid floor (row 3). Its base now sits FLUSH on
+    // the floor (the face starts at the cell's bottom-left corner, 32,48),
+    // so a grounded walker walking right from the floor is lifted onto the
+    // ramp immediately — the old shape floated the base 8px above the
+    // floor, so the same walker was wall-blocked at an invisible face
+    // (that regression test is gone with the shape).
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE - 2; // on the floor, just left of the foot
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    // A few steps: it must already be riding the face (feet above the
+    // floor), never blocked at the invisible old face.
+    let climbed = false;
+    for (let i = 0; i < 12; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (state.y + config.height / 2 < floorY + config.height / 2 - 0.5) {
+        climbed = true;
+      }
+    }
+    expect(climbed).toBe(true);
+    expect(state.grounded).toBe(true);
+    expect(state.x).toBeGreaterThan(2 * TILE_SIZE);
+  });
+
+  test("walks up the 287 ramp from the floor to the apex without violations", () => {
+    // Same layout: ramp at (2,2) on a closed floor (row 3). A grounded
+    // walker crosses the flush foot and rides the 2:1 face up to the apex
+    // (48, 40) — every report must pass anti-cheat (the old shape's
+    // floating face buried the walker and tripped the teleport check).
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE - 2;
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    for (let i = 0; i < 400; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x > 3 * TILE_SIZE - config.width / 2) break; // at the apex
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It left the floor and now rides the face near the apex (feet ≈ 40).
+    expect(state.y).toBeCloseTo(
+      2 * TILE_SIZE + (TILE_SIZE - config.width / 2 - 1 - 0.5) - config.height / 2,
+      0,
+    );
+  });
+
+  test("a box below the apex on the right is wall-blocked by the back side", () => {
+    // The right column below the apex (dx = 16, dy ≥ 8) is solid. A box
+    // standing on the floor to the right of the ramp cannot walk left
+    // through it: the ramp's base row is solid the whole way across (the
+    // face is flush with the bottom edge), so a ground-level box meets the
+    // tile's right face as a wall.
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 3 * TILE_SIZE + 8; // right of the ramp, on the floor
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    for (let i = 0; i < 240; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+    }
+    expect(state.grounded).toBe(true);
+    // Never entered the ramp's cell at floor level — its left edge stays
+    // at the tile's right face (x = 48), so the center is ≥ 48 + w/2 − 1.
+    expect(state.x).toBeGreaterThanOrEqual(3 * TILE_SIZE - config.width / 2 - 1);
+  });
+
+  test("a rising box under the ramp hits the flat underside, not the face", () => {
+    // 287 floating at (2,1) with open air below: the wedge fills the cell
+    // down to its bottom edge at every column, so the underside is a flat
+    // ceiling at y = 2·16·… = 32, even under the ramp's shallow left wing.
+    const grid = buildTileGrid(layer(4, 3, [
+      0, 0, 0, 0,
+      0, 0, TILE_SLOPE_SHALLOW, 0,
+      0, 0, 0, 0,
+    ]));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 2; // under the shallow left wing (dx ≈ 2)
+    state.y = 2.5 * TILE_SIZE; // below the tile, rising
+    state.vy = -config.jumpSpeed / 2; // moving up, half a jump
+    let minHead = Infinity;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      minHead = Math.min(minHead, state.y - config.height / 2);
+    }
+    // The flat underside (y = 32) bounces the head back — it must never
+    // tunnel past the cell bottom, and it must have reached it. Once
+    // stopped (vy = 0) gravity pulls the box back down, so it does not stay
+    // pinned.
+    expect(minHead).toBeGreaterThanOrEqual(2 * TILE_SIZE - 0.05);
+    expect(minHead).toBeLessThanOrEqual(2 * TILE_SIZE + 0.05);
+  });
+});
+
+describe("staircase tile (288, 2:1 steps)", () => {
+  test("point solidity matches the pixel mask", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_STAIRS]));
+    // Eight 2px-wide treads step down from the top-right (cols 14-15, row
+    // 0) to the bottom-left (cols 0-1, row 7); col 15 is a full-height
+    // right wall, col 0 a wall from row 7 down, row 15 the full base; the
+    // interior between the treads and the base is open.
+    expect(isPointSolid(grid, 0.4, 0.4)).toBe(false); // open top-left
+    expect(isPointSolid(grid, 14.5, 0.4)).toBe(true); // top tread
+    expect(isPointSolid(grid, 14.5, 1.5)).toBe(false); // under the top tread (open)
+    expect(isPointSolid(grid, 12.5, 1.5)).toBe(true); // second tread
+    expect(isPointSolid(grid, 12.5, 2.5)).toBe(false); // under it
+    expect(isPointSolid(grid, 0.5, 7.5)).toBe(true); // leftmost tread
+    expect(isPointSolid(grid, 0.5, 6.5)).toBe(false); // above it
+    expect(isPointSolid(grid, 8, 12)).toBe(false); // hollow interior
+    expect(isPointSolid(grid, 15.5, 12)).toBe(true); // right wall
+    expect(isPointSolid(grid, 0.5, 12)).toBe(true); // left wall
+    expect(isPointSolid(grid, 8, 15.5)).toBe(true); // base row
+  });
+
+  test("box solidity reads the mask: walls/treads solid, hollow open", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_STAIRS]));
+    expect(isBoxSolid(grid, 0.5, 11, 3, 6)).toBe(true); // left wall (col 0, rows 8-14)
+    expect(isBoxSolid(grid, 15.5, 11, 3, 6)).toBe(true); // right wall (col 15)
+    expect(isBoxSolid(grid, 8, 11, 8, 4)).toBe(false); // hollow interior
+    expect(isBoxSolid(grid, 14.5, 0.5, 3, 1)).toBe(true); // top tread
+    expect(isBoxSolid(grid, 1, 0.5, 3, 1)).toBe(false); // open top-left
+  });
+
+  test("lands on the staircase, binding the topmost tread under the span", () => {
+    // 288 at (2,1) floating in open air: the box drops onto the steps and
+    // rests on the shallowest tread under its span — its rightmost column
+    // (the same ride-on-the-leading-corner rule as 262/287).
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_STAIRS;
+    const grid = buildTileGrid(layer(8, 3, gids));
+
+    // Right edge at 46.5 → cell dx 14.5 → topRow(14) = 0 → bottom = cell
+    // top (16) → center 9 (flush on the top tread).
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 8;
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 900; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(TILE_SIZE - config.height / 2, 3);
+  });
+
+  test("a walker climbs the full staircase from foot to top without violations", () => {
+    // 288 at (2,1) with open air around it; the walker starts on the
+    // leftmost tread (bottom = top + topRow(0) = 23) and rides the 2px
+    // treads up to the top (bottom = 16). Every report must pass.
+    const grid = buildTileGrid(
+      layer(6, 3, [0, 0, 0, 0, 0, 0, 0, 0, TILE_STAIRS, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    );
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 4;
+    state.y = TILE_SIZE + 7 - config.height / 2;
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    let minBottom = state.y + config.height / 2;
+    for (let i = 0; i < 300; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      minBottom = Math.min(minBottom, state.y + config.height / 2);
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x + config.width / 2 > 3 * TILE_SIZE) break; // right edge off the tile
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It climbed from the left foot (bottom 23) to the top tread (bottom 16).
+    expect(minBottom).toBeLessThanOrEqual(TILE_SIZE + 0.05);
+    expect(minBottom).toBeGreaterThan(TILE_SIZE - 1);
+  });
+
+  test("a floor-level box is wall-blocked by the left limb, never hoisted", () => {
+    // 288 at (2,1) directly above a solid floor (row 2). The base row is
+    // solid, so a box on the floor cannot walk under the tile; its left
+    // limb (col 0, rows 7-15) blocks a box pushing in at floor level —
+    // and the box must not be hoisted 9px onto the steps (no flush foot:
+    // the lowest tread top is 1px above the cell's bottom edge).
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_STAIRS;
+    for (let x = 0; x < 8; x++) gids[2 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE - 2;
+    state.y = 2 * TILE_SIZE - config.height / 2; // feet on the floor (32)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      // Never lifted off the floor, never passed the tile's left face.
+      expect(state.y).toBeLessThanOrEqual(floorY + 1e-6);
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.x).toBeLessThanOrEqual(2 * TILE_SIZE - config.width / 2 + 0.5);
+  });
+
+  test("a rising box under the staircase hits the flat underside, not a tread", () => {
+    // 288 floating at (2,1) with open air below: the base row is solid at
+    // every column, so the underside is a flat ceiling at the cell's
+    // bottom edge — even over the hollow interior.
+    const grid = buildTileGrid(
+      layer(4, 3, [0, 0, 0, 0, 0, 0, TILE_STAIRS, 0, 0, 0, 0, 0]),
+    );
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 6; // under the hollow interior
+    state.y = 2.5 * TILE_SIZE; // below the tile, rising
+    state.vy = -config.jumpSpeed / 2;
+    let minHead = Infinity;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      minHead = Math.min(minHead, state.y - config.height / 2);
+    }
+    expect(minHead).toBeGreaterThanOrEqual(2 * TILE_SIZE - 0.05);
+    expect(minHead).toBeLessThanOrEqual(2 * TILE_SIZE + 0.05);
+  });
+});
+
 describe("the real jungle map", () => {
   // Loads the actual Assets/map/main.json collision layer (60×17 tiles) —
   // the tests exercise the game's real geometry, not an approximation.
@@ -542,6 +891,101 @@ describe("the real jungle map", () => {
     expect(state.x).toBeGreaterThan(20.5 * TILE_SIZE);
     expect(state.grounded).toBe(true);
     expect(violations).toEqual([]);
+  });
+
+  test("walks up the jungle 287 ramp from the floor without tripping the anti-cheat", () => {
+    // The map's 287 at (7,12) (x 112..128) sits on the row-13 floor
+    // (y = 208) whose top is the ramp's flush base. Its face runs from the
+    // bottom-left corner (112, 208) to the right edge's midpoint (128, 200)
+    // — walking right from the floor must climb the ramp (the old
+    // top-aligned model floated the foot 8px up, so the walker hit an
+    // invisible face at the base) and every report must pass.
+    const grid = jungleGrid();
+    const state = createPlayerState(config);
+    state.x = 7 * TILE_SIZE - 4; // on the floor just left of the foot
+    state.y = 13 * TILE_SIZE - config.height / 2; // feet on the floor (208)
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    for (let i = 0; i < 400; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x > 7 * TILE_SIZE + 4) break; // well onto the ramp's face
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    expect(state.x).toBeGreaterThan(7 * TILE_SIZE + 4);
+    // It climbed off the floor onto the face (feet ≈ 204 at dx ≈ 8-9).
+    expect(state.y + config.height / 2).toBeLessThan(13 * TILE_SIZE);
+    expect(state.y + config.height / 2).toBeGreaterThan(
+      12 * TILE_SIZE + 16 - config.width - 3,
+    );
+  });
+
+  test("walks from the floor up the full 287+288 ramp without tripping the anti-cheat", () => {
+    // The map's 287 at (7,12) and its sibling 288 at (8,12) form the
+    // continuous ramp the discovery notes promised as a follow-up: 287
+    // lifts the walker from the row-13 floor (feet 208) to its apex (feet
+    // 200), then 288's staircase continues to the top (feet 192 — the
+    // cell's top edge). The 287→288 seam is 1px (287's apex at dy 8 vs
+    // 288's left tread at dy 7), settled by the vertical pass; every
+    // report must pass.
+    const grid = jungleGrid();
+    const state = createPlayerState(config);
+    state.x = 7 * TILE_SIZE - 4; // on the floor just left of the foot
+    state.y = 13 * TILE_SIZE - config.height / 2; // feet on the floor (208)
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    let minBottom = state.y + config.height / 2;
+    for (let i = 0; i < 400; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      minBottom = Math.min(minBottom, state.y + config.height / 2);
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x > 8 * TILE_SIZE + 10) break; // right edge near 288's far treads
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It climbed from the floor (208) to 288's top tread (192 — the
+    // cell's top edge, which is flush with the topmost tread).
+    expect(minBottom).toBeLessThanOrEqual(12 * TILE_SIZE + 1);
+    expect(minBottom).toBeGreaterThan(12 * TILE_SIZE - 3);
   });
 
   test("walking under a 110 chamfer on a lower floor is not hoisted", () => {

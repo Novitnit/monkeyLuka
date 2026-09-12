@@ -7,9 +7,11 @@ import { describe, expect, test } from "bun:test";
 import {
   PLAYER_SPAWN,
   TILE_SLOPE_BR,
+  TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
+  TILE_STAIRS,
   isPointSolid,
 } from "@monkeyluka/shared";
 import { parseJungleMap } from "./jungle-map";
@@ -28,8 +30,9 @@ describe("jungle-map loader", () => {
     expect(height).toBe(17 * 16);
 
     // Snapshot of the real map's layer1 (computed from main.json): 109
-    // solid tiles and 8 slopes (5×110, 2×109, 1×262); the decoration gid
-    // (464) must NOT become collision.
+    // solid tiles and 11 sloped kinds (5×110, 2×109, 2×287, 2×288 — the
+    // two 287+288 ramp pairs; the current map has no 262); the decoration
+    // gid (464) must NOT become collision.
     let solid = 0;
     let slopes = 0;
     for (const kind of grid.kinds) {
@@ -37,13 +40,15 @@ describe("jungle-map loader", () => {
       if (
         kind === TILE_SLOPE_TL_BR ||
         kind === TILE_SLOPE_TR_BL ||
-        kind === TILE_SLOPE_BR
+        kind === TILE_SLOPE_BR ||
+        kind === TILE_SLOPE_SHALLOW ||
+        kind === TILE_STAIRS
       ) {
         slopes += 1;
       }
     }
     expect(solid).toBe(109);
-    expect(slopes).toBe(8);
+    expect(slopes).toBe(11);
   });
 
   test("spawn point floats above the left platform and has open air below", () => {

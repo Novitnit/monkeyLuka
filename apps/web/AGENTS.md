@@ -93,12 +93,18 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
   like `tiled-map.ts`)
-  extracts collision geometry from the `layer1` tiles — 57/109/110/262 tiles
-  form one solid block wherever adjacent (a 57 side bordering a slope emits
-  no straight edge; the slope line takes over that boundary). Blocks are
-  traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
-  for vertical; `side` tells which side the solid is on) plus the 109/110/262
-  diagonal lines. **Collision ignores a layer's `visible` flag** — the
+  extracts collision geometry from the `layer1` tiles — 57/109/110/262/287/288
+  tiles form one solid block wherever adjacent (a 57 side bordering a slope
+  emits no straight edge; the slope line takes over that boundary). Blocks
+  are traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
+  for vertical; `side` tells which side the solid is on) plus the
+  109/110/262/287/288 diagonal lines (288's staircase line is drawn as the
+  top-aligned 2:1 segment (0, 8) → (16, 0)). 287/288 also emit their solid
+  back wall and bottom base row as straight boundary edges where they face
+  open space (a solid neighbor — another ramp tile or a 57 floor — covers
+  the face and renders no line), so the debug overlay outlines the
+  ramp/staircase shapes completely. **Collision ignores a layer's `visible`
+  flag** — the
   hidden `layer1` is still parsed by `resolveTiledMap` and used; the renderer
   (`map-renderer.ts`) is what skips `visible: false` layers. The room grid
   (`roomGridSize` in `tiled-map.ts`) is shared by the renderer and the debug

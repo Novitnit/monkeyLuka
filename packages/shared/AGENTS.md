@@ -72,7 +72,13 @@ or Colyseus imports — so it can also be unit-tested directly.
 
 - Tile constants: `TILE_SIZE` (16), `TILE_SOLID` (57), `TILE_SLOPE_TL_BR` (110),
   `TILE_SLOPE_TR_BL` (109), `TILE_SLOPE_BR` (262, mirror of 109 — solid on the
-  bottom-right half), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
+  bottom-right half), `TILE_SLOPE_SHALLOW` (287, the 2:1 ramp — 16px run, 8px
+  rise, solid below the line from the bottom-left corner (0, 16) to the
+  right edge's midpoint (16, 8)), `TILE_STAIRS` (288, the staircase tile — a
+  pixel-mask shape in `collision.ts`'s `STAIRS_MASK`, not an analytic wedge:
+  eight 2px treads stepping down from the top-right to the bottom-left — the
+  mirror of 287 — plus a full-height right wall, a left wall from mid-height
+  down, and a solid base row, hollow between the treads and the base), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
   names from these so rendering and physics can't drift.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
@@ -88,6 +94,34 @@ or Colyseus imports — so it can also be unit-tested directly.
   side) so a right-moving climber rides the ramp with its bottom-right
   corner and never embeds (sampling the deepest point buried the box and
   tripped the anti-cheat's buried-in-geometry check → teleport kick).
+  287 is 262 at half the rise, anchored to the cell's BOTTOM edge — the
+  face runs from the bottom-left corner (0, 16) to the right edge's
+  midpoint (16, 8) (solid below it: dx + 2·dy ≥ 32): so its landing
+  surface is its own 2:1 line (sampled at the shallowest extent, same
+  ride-on-the-corner rule); its base is flush with the bottom edge, so a
+  floor-level walker steps straight onto it (a ground-level walk-on ramp —
+  the dir>0 lift guard is 262's "below the cell" one, there is no hollow
+  wing to hoist from); its underside is FLAT (the base row is solid at
+  every column — a rising box hits a ceiling at the cell bottom, not the
+  face); the right-mover face is `32 − 2·dyBottom`, clamped to the tile's
+  left edge once a box's bottom is below the cell (the unclamped face
+  would shove a low box ~24px back); and the right column below the apex
+  is the solid BACK SIDE — the ramp's top-right corner is a wall a
+  left-mover meets like 262's right column. See
+  `discoveries/shallow-ramp-tile-287-half-height-diagonal.md`.
+  288 is the staircase tile — a **pixel mask** (`STAIRS_MASK` in
+  collision.ts), so all five queries (point, AABB, slope support,
+  horizontal/vertical penetration) branch on the mask directly: the tread
+  tops are the landing surface, sampled at the box's rightmost column
+  (`topRow = 7 − ⌊c/2⌋`, same ride-on-the-leading-corner rule as 262/287); a
+  full-height right wall and a mid-height left wall block lateral motion via
+  the nearest solid column; the base row makes the underside a flat ceiling
+  and the interior (between treads and base) reads OPEN to point/AABB tests.
+  Its support band allows a box ~1px BELOW the left foot (a walker arriving
+  from a sealing 287 ramp sits at 287's apex, dy 8, while 288's left tread
+  is dy 7) so the 287 → 288 seam settles instead of jamming the walker at
+  the left wall's top row — a 287 + 288 pair is one continuous ramp to the
+  top of 288.
 - `createPlayerState()` + `stepPlayer(state, input, grid, dt, config)` — the
   deterministic player step (run accel, gravity, coyote/buffered jump, wall
   cling: airborne + moving into a wall + jump press grabs the wall — the

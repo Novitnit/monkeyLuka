@@ -146,9 +146,13 @@ sustained abnormal-movement report stream **before** a reload (already at
 violation count N) resumes counting from N after the reconnect.
 
 Known limitation: `stepPlayer` blocks against slope *faces* horizontally, so
-walkable ramps aren't supported — the physics treats 109/110/262 as sloped
-edges (262 is 109's mirror, solid on the bottom-right half, and blocks
-laterally exactly like its siblings). Keep that in mind if slope tiles
+walkable ramps aren't supported — the physics treats 109/110/262/287/288 as
+sloped edges (262 is 109's mirror, solid on the bottom-right half; 287 is 262
+at half the rise — a 2:1 ramp whose base is flush with the cell's bottom
+edge, so it is a ground-level walk-on ramp with a solid back column under
+its apex; 288 is the staircase tile — 287's mirror — a pixel mask with
+2px treads, side walls, and a solid base row, and a 287 + 288 pair forms
+the continuous ramp to 288's top). Keep that in mind if slope tiles
 become walkable ramps.
 
 ## Colyseus 0.18 quirks

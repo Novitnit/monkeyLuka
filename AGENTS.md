@@ -164,11 +164,24 @@ see `discoveries/agents.md` for the format and conventions.
 
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics.ts` (tile
-collision: 57 solid, 110/109/262 slopes) and renders its own prediction with no
-server round-trip. Slope contacts: 110/109 landings rest on the flat top lip
+collision: 57 solid, 110/109/262/287/288 slopes) and renders its own prediction
+with no server round-trip. Slope contacts: 110/109 landings rest on the flat
+top lip
 (never hoist an under-runner walking below a chamfer); 262 climbing rides the
-ramp's surface at the box's leading edge — both documented in
-`discoveries/jungle-slope-climb-buries-player-kicks-teleport.md`. The Colyseus
+ramp's surface at the box's leading edge; 287 is the half-height 2:1 ramp
+(16px run, 8px rise — solid below the bottom-left-corner→right-edge-
+midpoint line, base flush with the tile's bottom edge, so a walker steps
+straight onto it from the floor; a solid back column under the apex;
+underside is a flat ceiling); 288 is the staircase tile — the mirror of 287
+(2px treads stepping down from the top-right to the bottom-left) with a
+full-height right wall, a left wall from mid-height down, and a solid base
+row, hollow between the treads and the base (a pixel mask, not an analytic
+wedge), so a 287 + 288 pair forms one continuous ramp to the top of 288 —
+its seam binds the walker at 287's apex (dy 8) onto 288's left tread (dy 7)
+through a 1px-deep support allowance; see collision.ts's `STAIRS_MASK`) —
+documented in
+`discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` and
+`discoveries/shallow-ramp-tile-287-half-height-diagonal.md`. The Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
 abnormal speed / buried-in-geometry via `validatePositionReport`) and

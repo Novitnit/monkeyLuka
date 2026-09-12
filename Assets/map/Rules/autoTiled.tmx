@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-up" width="30" height="17" tilewidth="16" tileheight="16" infinite="1" nextlayerid="12" nextobjectid="1">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-up" width="30" height="17" tilewidth="16" tileheight="16" infinite="1" nextlayerid="17" nextobjectid="1">
  <properties>
+  <property name="AutomappingRadius" type="int" value="1"/>
   <property name="MatchOutsideMap" type="bool" value="true"/>
  </properties>
  <tileset firstgid="1" source=":/automap-tiles.tsx"/>
  <tileset firstgid="6" source="../BlockTileSet.tsx"/>
  <tileset firstgid="760" source="../tileset.tsx"/>
- <layer id="1" name="input_layer1" width="30" height="17" offsetx="21" offsety="4">
+ <layer id="1" name="input_layer1" width="30" height="17" locked="1">
   <data encoding="csv">
    <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -30,10 +31,10 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,3,0,0,267,62,0,62,266,0,0,0,0,0,0,0,
-3,62,3,0,62,62,0,62,62,0,0,0,0,0,0,0,
-0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,4,0,0,0,0,0,0,0,0,0,4,0,4,0,0,
+0,3,0,0,292,293,0,294,295,0,4,62,0,62,4,0,
+3,62,3,0,62,62,0,62,62,0,4,62,0,62,4,0,
+0,2,0,0,0,0,0,0,0,0,62,62,0,62,62,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -47,7 +48,7 @@
   </data>
  </layer>
  <group id="11" name="out_water" offsetx="11.6667" offsety="4.33333">
-  <layer id="3" name="output4_out_water" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="3" name="output4_out_water" width="30" height="17" locked="1" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -69,7 +70,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="10" name="output3_out_water" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="10" name="output3_out_water" width="30" height="17" locked="1" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -91,7 +92,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="9" name="output2_out_water" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="9" name="output2_out_water" width="30" height="17" locked="1" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -113,7 +114,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="8" name="output1_out_water" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="8" name="output1_out_water" width="30" height="17" locked="1" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -137,7 +138,7 @@
   </layer>
  </group>
  <group id="4" name="out_tile" offsetx="11.6667" offsety="4.33333">
-  <layer id="7" name="output4_out_tile" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="7" name="output4_out_tile" width="30" height="17" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -159,7 +160,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="2" name="output3_out_tile" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="2" name="output3_out_tile" width="30" height="17" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -199,7 +200,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="6" name="output2_out_tile" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="6" name="output2_out_tile" width="30" height="17" offsetx="-11.7" offsety="-4.4">
    <data encoding="csv">
     <chunk x="-32" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -239,7 +240,7 @@
 </chunk>
    </data>
   </layer>
-  <layer id="5" name="output1_out_tile" width="30" height="17" offsetx="9.33333" offsety="-0.333333">
+  <layer id="5" name="output1_out_tile" width="30" height="17" offsetx="-11.7" offsety="-4.4">
    <properties>
     <property name="Probability" type="float" value="3"/>
    </properties>
@@ -266,10 +267,10 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,766,0,767,0,0,0,0,0,0,0,0,
-0,0,0,0,790,791,0,792,793,0,0,0,0,0,0,0,
-0,812,0,0,815,816,0,817,818,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,766,0,767,0,0,0,760,0,0,0,0,
+0,0,0,0,790,791,0,792,793,0,0,785,0,0,0,0,
+0,812,0,0,815,816,0,817,818,0,0,835,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,866,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

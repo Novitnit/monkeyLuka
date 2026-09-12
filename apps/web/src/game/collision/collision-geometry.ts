@@ -15,6 +15,21 @@
  * - 110 – diagonal tile, solid on its top-left half (line TL → BR).
  * - 109 – diagonal tile, solid on its top-right half (line TR → BL).
  * - 262 – diagonal tile, solid on its bottom-right half (line TR → BL).
+ * - 287 – shallow diagonal tile, solid below the bottom-aligned 2:1 line
+ *         from the bottom-left corner (0, 16) to the right edge's midpoint
+ *         (16, 8) — 262 at half the rise, sitting on the cell's bottom edge
+ *         with a solid back column under the apex. Besides the diagonal,
+ *         the back column and the bottom base row are emitted as wall and
+ *         floor boundary edges where they face open space.
+ * - 288 – staircase tile (a pixel-mask shape): eight 2px treads stepping
+ *         down from the top-right to the bottom-left — the mirror of 287,
+ *         so a 287 + 288 pair forms a continuous ramp — with a full-height
+ *         right wall, a left wall from mid-height down, and a solid base
+ *         row. Outlined like the other slopes; the block's bounding edges
+ *         are traced and the staircase line (0, 8) → (16, 0) is emitted as
+ *         its diagonal, with the full-height right wall and the base row
+ *         emitted as wall and floor boundary edges where they face open
+ *         space.
  *
  * A 57 side touching a 109/110 tile emits no straight edge — the slope line
  * takes over that part of the block boundary, so the two belong to the same
@@ -24,9 +39,11 @@
 import {
   COLLISION_LAYER_NAME,
   TILE_SLOPE_BR,
+  TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
+  TILE_STAIRS,
 } from "@monkeyluka/shared";
 import type { TiledMap } from "../map/tiled-map";
 
@@ -38,6 +55,19 @@ export const DIAGONAL_TL_TO_BR = TILE_SLOPE_TL_BR;
 export const DIAGONAL_TR_TO_BL = TILE_SLOPE_TR_BL;
 /** Diagonal tile, solid on its bottom-right half (line top-right → bottom-left). */
 export const DIAGONAL_TR_TO_BL_BOTTOM = TILE_SLOPE_BR;
+/**
+ * Shallow diagonal tile (2:1 ramp): solid below the bottom-aligned line
+ * from the bottom-left corner (0, 16) to the right edge's midpoint (16, 8)
+ * of the cell.
+ */
+export const DIAGONAL_SHALLOW = TILE_SLOPE_SHALLOW;
+/**
+ * Staircase tile (pixel-mask shape): eight 2px treads stepping down from
+ * the top-right to the bottom-left — the mirror of 287, so a 287 + 288
+ * pair forms a continuous ramp — with a full-height right wall, a left
+ * wall from mid-height down, and a solid base row.
+ */
+export const STAIR_STEPS = TILE_STAIRS;
 
 /** Default tile layer holding the collision geometry. */
 export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
@@ -64,7 +94,7 @@ export interface BoundarySegment {
   side: TileSide;
 }
 
-/** The collision line of one diagonal tile (109/110), in map pixels. */
+/** The collision line of one diagonal tile (110/109/262/287), in map pixels. */
 export interface DiagonalSegment {
   x1: number;
   y1: number;
@@ -77,7 +107,7 @@ export interface DiagonalSegment {
 export interface CollisionGeometry {
   /** Merged straight boundary edges of the collision blocks. */
   segments: BoundarySegment[];
-  /** Slope lines of the 109/110 diagonal tiles. */
+  /** Slope lines of the diagonal tiles (110/109/262/287). */
   diagonals: DiagonalSegment[];
 }
 
@@ -110,7 +140,9 @@ export function buildCollisionGeometry(
       gid === WALL_TILE ||
       gid === DIAGONAL_TL_TO_BR ||
       gid === DIAGONAL_TR_TO_BL ||
-      gid === DIAGONAL_TR_TO_BL_BOTTOM
+      gid === DIAGONAL_TR_TO_BL_BOTTOM ||
+      gid === DIAGONAL_SHALLOW ||
+      gid === STAIR_STEPS
     );
   };
 
@@ -129,6 +161,11 @@ export function buildCollisionGeometry(
   };
 
   const diagonals: DiagonalSegment[] = [];
+  // Straight boundary edges of the slope-shape tiles (287/288): their back
+  // wall and bottom base row, emitted per tile alongside the diagonal but
+  // only where the face borders open space (a solid neighbor covers it,
+  // like the 57 block edges above).
+  const shapeEdges: BoundarySegment[] = [];
 
   for (let ty = 0; ty < height; ty++) {
     for (let tx = 0; tx < width; tx++) {
@@ -168,6 +205,79 @@ export function buildCollisionGeometry(
           y2: top + th,
           solidSide: "bottom-right",
         });
+      } else if (gid === DIAGONAL_SHALLOW) {
+        // 287: the face runs from the bottom-left corner to the right
+        // edge's midpoint — 16px of run, 8px of rise, aligned with the
+        // tile's bottom edge. It is not a corner-to-corner line, so the
+        // segment ends at the right edge's midpoint.
+        diagonals.push({
+          x1: left,
+          y1: top + th,
+          x2: left + tw,
+          y2: top + th / 2,
+          solidSide: "bottom-right",
+        });
+        // The shape's other two boundaries: the back side (the solid
+        // right column below the apex) and the bottom base row. Drawn only
+        // where the face borders open space — a solid neighbor (a 288 to
+        // the right, a 57 floor below) covers the face, like the merged
+        // 57 block edges.
+        if (!isSolid(tx + 1, ty)) {
+          shapeEdges.push({
+            x1: left + tw,
+            y1: top + th / 2,
+            x2: left + tw,
+            y2: top + th,
+            kind: "wall",
+            side: "right",
+          });
+        }
+        if (!isSolid(tx, ty + 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top + th,
+            x2: left + tw,
+            y2: top + th,
+            kind: "floor",
+            side: "bottom",
+          });
+        }
+      } else if (gid === STAIR_STEPS) {
+        // 288: the mirror of 287 — the staircase line runs from mid-height
+        // on the left (0, 8) to the cell's top-right corner (16, 0). The
+        // treads step down from the top-right; the solid sits below.
+        diagonals.push({
+          x1: left,
+          y1: top + th / 2,
+          x2: left + tw,
+          y2: top,
+          solidSide: "bottom-right",
+        });
+        // The shape's other two boundaries: the full-height right wall
+        // (back) and the solid base row (bottom), drawn only where the
+        // face borders open space — a solid neighbor (a 57 to the right,
+        // a 57 floor below) covers the face, like the merged 57 block
+        // edges.
+        if (!isSolid(tx + 1, ty)) {
+          shapeEdges.push({
+            x1: left + tw,
+            y1: top,
+            x2: left + tw,
+            y2: top + th,
+            kind: "wall",
+            side: "right",
+          });
+        }
+        if (!isSolid(tx, ty + 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top + th,
+            x2: left + tw,
+            y2: top + th,
+            kind: "floor",
+            side: "bottom",
+          });
+        }
       }
     }
   }
@@ -239,6 +349,10 @@ export function buildCollisionGeometry(
       });
     }
   }
+
+  // Slope-shape boundary edges join the merged block edges; the sort below
+  // keeps the output order deterministic.
+  segments.push(...shapeEdges);
 
   // Deterministic output order (grouped by geometry, not by Map insertion).
   const byPosition = (
