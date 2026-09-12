@@ -132,9 +132,10 @@ export function buildJungleScene(
 
             // The world is one continuous map: rooms must abut exactly (gap
             // 0) so tile, physics, and camera coordinates line up across
-            // the room seams. ROOM_WIDTH is a bit wider than the designed
-            // 480px rooms so each rendered room covers the whole 1280px
-            // camera and the next room never peeks in.
+            // the room seams. ROOM_WIDTH is the designed 480px room and the
+            // renderer scales it to exactly the 1280px camera width
+            // (scale = canvasWidth / ROOM_WIDTH), so each rendered room is
+            // exactly the viewport and the next room never peeks in.
             const render = renderTiledMap(this, map, {
               roomWidth: ROOM_WIDTH,
               roomHeight: ROOM_HEIGHT,

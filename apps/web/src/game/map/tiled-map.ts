@@ -22,14 +22,19 @@ import {
 
 /**
  * Size of the map window each room renders and the room-locked camera
- * shows. Rooms are *designed* 480×272, but ROOM_WIDTH is 484: the renderer
- * scales the map to fill the 1280×720 canvas height (scale = 720/272 ≈
- * 2.647), so a 480px room renders only ≈ 1270.6px wide — 9.4px narrower
- * than the canvas, which let the room-locked camera (scrolled to the room
- * edge) show a sliver of the next room. A 484px window renders ≈ 1281.2px,
- * pushing the seam just off-screen. Only rendering and the camera room-lock
- * read this — the physics grid and the server use raw map tiles, so the
- * 4px overlap changes no gameplay geometry.
+ * shows. Rooms are *designed* 480×272 and ROOM_WIDTH must stay exactly
+ * 480 — never wider: the 480px window keeps the camera grid aligned to
+ * the designed rooms (no neighbor content ever pulled into the frame).
+ * The renderer scales each room to exactly the 1280px canvas width
+ * (scale = canvasWidth / ROOM_WIDTH = 1280/480 ≈ 2.667), so a scaled
+ * room is exactly the viewport and the seam lands exactly on its edge —
+ * no sliver of the next room. Tradeoff: that scale makes the 272px room
+ * height ≈ 725.3px, 5.3px over the 720px canvas, so the map's top/bottom
+ * rows crop ~2.67px each at the world's vertical edges (no single scale
+ * can make 480px exactly 1280px wide and 272px fit in 720px: 1280/480
+ * ≈ 2.667 > 720/272 ≈ 2.647). Only rendering and the camera room-lock
+ * read this — the physics grid and the server use raw map tiles, so no
+ * gameplay geometry changes with it.
  */
 export const ROOM_WIDTH = 480;
 export const ROOM_HEIGHT = 272;

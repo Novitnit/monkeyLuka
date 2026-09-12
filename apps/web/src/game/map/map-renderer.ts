@@ -3,12 +3,15 @@
  * frame per tile), then renders the map as separate `ROOM_WIDTH`×`ROOM_HEIGHT`
  * rooms. Anything that would overflow a room's bounds is cropped away.
  *
- * Rooms are laid out in a grid (row-major). The whole grid is scaled to fill
- * the canvas height as much as possible and centered; whatever horizontal
- * space is left over becomes the left/right margins. `ROOM_WIDTH` (484) is
- * deliberately a bit wider than the 480px rooms the map was designed with,
- * so a scaled room always covers the full 1280px canvas and the seams to
- * neighboring rooms stay off-screen.
+ * Rooms are laid out in a grid (row-major). Each room is scaled to exactly
+ * the canvas width (`scale = canvasWidth / roomWidth` ≈ 1280/480 ≈ 2.667),
+ * so a room-locked camera (viewport = canvas width) ends exactly at the
+ * seam and the neighbor room never peeks in. `ROOM_WIDTH` is constrained
+ * to the designed 480px; the width-exact scale then renders the 272px room
+ * height ≈ 725.3px — 5.3px over the 720px canvas, so the map's top/bottom
+ * rows crop ~2.67px each at the vertical world edges. For stacked room
+ * rows (rows > 1) the height rule takes over so the grid can't overflow
+ * the canvas many rooms deep; leftover horizontal space becomes margins.
  */
 
 import type Phaser from "phaser";
@@ -149,16 +152,25 @@ export function renderTiledMap(
     }
   }
 
-  // Scale to fill the full height when possible; shrink only if several
-  // stacked room rows would overflow the canvas.
+  // Fit a single room's width into the canvas exactly: the room-locked
+  // camera's viewport is the full canvas width, so a room scaled to
+  // canvasWidth / roomWidth (= 1280/480 ≈ 2.667) ends exactly at the
+  // viewport edge and the neighbor room never peeks in. ROOM_WIDTH is
+  // capped at the designed 480px, so this scale renders the 272px room
+  // height ≈ 725.3px — 5.3px over the 720px canvas, cropping ~2.67px off
+  // the map's top and bottom rows at the world edges (a single scale can't
+  // make a 480px room exactly 1280px wide and still fit 272px in 720px).
+  // For stacked room rows (rows > 1) the height rule takes over so several
+  // rows can't overflow the canvas at once.
   const canvasWidth = scene.scale.width;
   const canvasHeight = scene.scale.height;
   const heightFilling = canvasHeight / roomHeight;
   const totalHeightAtFill = rows * roomHeight * heightFilling + (rows - 1) * gap;
+  const widthFitting = canvasWidth / roomWidth;
   const scale =
-    totalHeightAtFill > canvasHeight
+    rows > 1 && totalHeightAtFill > canvasHeight
       ? (canvasHeight - (rows - 1) * gap) / (rows * roomHeight)
-      : heightFilling;
+      : widthFitting;
 
   const totalWidth = columns * roomWidth * scale + (columns - 1) * gap;
   const totalHeight = rows * roomHeight * scale + (rows - 1) * gap;

@@ -34,24 +34,45 @@ out in 480×272 rooms) and what the canvas can actually display:
 The physics grid and the server were never affected — they read raw tiles at
 unscaled coordinates, so only rendering and the camera disagreed.
 
-## Fix
+## Fix (shipped)
 
-`apps/web/src/game/map/tiled-map.ts` widened the render window from 480 to
-**484px** (`ROOM_WIDTH = 484`):
+`ROOM_WIDTH` stays **exactly 480 — never wider**: the window is the designed
+480px room, so the camera grid and the debug overlay always align with the
+room art (no neighbor content pulled into the frame).
+`apps/web/src/game/map/map-renderer.ts` scales each room to exactly the
+canvas width: `scale = canvasWidth / roomWidth` = 1280/480 ≈ **2.667**
+(for stacked room rows, rows > 1, the height rule takes over so the grid
+can't overflow the canvas several rooms deep):
 
-- `484 × 2.6471 ≈ 1281.2px`, so a scaled room now overflows the 1280px
-  viewport by ~1.2px instead of under-filling by ~9.4px — the seam is pushed
-  fully off-screen and the neighbor room can never peek in.
+- `480 × 2.667 ≈ 1280.0px` — a scaled room is exactly as wide as the
+  1280px camera viewport, so the seam to the neighbor lands exactly on the
+  viewport edge: no horizontal sliver, no overflow.
+- `272 × 2.667 ≈ 725.3px` — the room height is 5.3px taller than the
+  720px canvas, so the map's top and bottom rows crop ~2.67px each at the
+  world's vertical edges. This is the unavoidable tradeoff of a fixed 480px
+  window: no single scale makes 480px exactly 1280px wide *and* 272px fit
+  in 720px (1280/480 ≈ 2.667 > 720/272 ≈ 2.647); any wider window would
+  exceed ROOM_WIDTH, and the height-filling scale leaves the ~9.4px
+  horizontal sliver this discovery is about.
 - `apps/web/src/game/jungle-scene.ts` renders with `gap: 0` so room columns
   abut exactly: tile, physics, and camera X coordinates agree across the
   seam (the room-lock camera snaps to `roomView.x`/`roomView.y`, which sit
   exactly at `col × ROOM_WIDTH`).
-- The +4px is **render-only**: `ROOM_WIDTH` is read by the renderer and the
-  camera room-lock; the collision grid and `apps/server` still use raw map
-  tiles, so no gameplay geometry moved and no tile coordinates shifted.
 
-`height` stays 272: vertical fits exactly (`272 × 2.6471 = 720`), so no
-vertical equivalent of the seam exists.
+The window width is **render-only**: `ROOM_WIDTH` is read by the renderer,
+the camera room-lock, and the collision-debug overlay grid; the collision
+grid and `apps/server` still use raw map tiles, so no gameplay geometry
+moved and no tile coordinates shifted.
+
+> History: the width-fit scale was also paired with a 484px window
+> (`ROOM_WIDTH = 484`, the smallest window whose width-fit scale keeps the
+> room height ≤ 720) — it eliminates even the vertical crop, but the 4px
+> wider window desyncs the room grid from the designed rooms and shows 4px
+> of the next room's content inside the current frame. Abandoned: the room
+> window must stay exactly 480. Also note the original 480→484 commit
+> (`a29b893`) only rewrote doc comments — the constant stayed 480, which is
+> why the ~9.4px sliver (reported as "~4px of Room 2 visible" in the Room 1
+> camera) persisted until the width-fit scale landed.
 
 ## Verification
 
