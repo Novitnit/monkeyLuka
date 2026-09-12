@@ -97,6 +97,24 @@ several individually-plausible reports is not caught (catch it by re-enabling
 server-side re-simulation if that ever matters). Set
 `JUNGLE_DEBUG_VALIDATION=1` to log rejected reports with their delta/flags.
 
+### Reconnection (drop → resume on the same seat)
+
+A non-consented disconnect (tab close, reload, network blip) hits `onDrop`,
+which holds the player's seat + world entry via `allowReconnection(client,
+RECONNECT_GRACE_SECONDS)` (default 30 s, env `JUNGLE_RECONNECT_SECONDS`). The
+player stays in `JungleState.players` frozen at the last accepted position;
+when the seat expires (or the room disposes) the deferred rejects and
+`removePlayer` cleans up. A reconnect reuses the **same sessionId** without
+calling `onJoin`, so name and position survive; if it succeeds, `onReconnect`
+resets `lastSeq`/`inputStamps`/`lastValidAt` — a reloaded page restarts its
+report `seq` at 0, and without the reset every report would be dropped as a
+non-increasing-`seq` retransmit. Consented leaves (`onLeave`: Exit button,
+anti-cheat kick, room disposal) never hold a seat.
+
+Known limitation: the seat counts toward `maxClients` while held, and a
+sustained abnormal-movement report stream **before** a reload (already at
+violation count N) resumes counting from N after the reconnect.
+
 Known limitation: `stepPlayer` blocks against slope *faces* horizontally, so
 walkable ramps aren't supported — the current map only uses 109/110 as
 under-bevels. Keep that in mind if new slope tiles become floors.

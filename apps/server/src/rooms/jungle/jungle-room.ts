@@ -1,4 +1,4 @@
-import { Room, type Client } from "colyseus";
+import { CloseCode, Room, type Client } from "colyseus";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
@@ -14,6 +14,8 @@ import { loadJungleMap, type JungleMapData } from "../../game/jungle-map";
 import { clampVelocity, sanitizePlayerInput } from "./input";
 import { writeIfChanged } from "./schema-write";
 import type { ServerPlayer } from "./server-player";
+
+const debug = true
 
 /**
  * The jungle matchmaking room. Registers players in the shared `JungleState`,
@@ -32,6 +34,16 @@ import type { ServerPlayer } from "./server-player";
  * wire-payload sanitizing + advisory-velocity clamp, and `schema-write.ts`
  * the patch-churn-reducing `PlayerInfo` writes.
  */
+
+/**
+ * How long a dropped client's seat + world entry stay held for reconnection,
+ * seconds (env `JUNGLE_RECONNECT_SECONDS`). Long enough for a page reload or
+ * a short network blip; the seat counts toward maxClients while held.
+ */
+const RECONNECT_GRACE_SECONDS = Number(
+  process.env.JUNGLE_RECONNECT_SECONDS ?? 30,
+);
+
 export class JungleRoom extends Room<{ state: JungleRoomState }> {
   /** Soft cap until matchmaking/filtering lands (Colyseus default is 10). */
   override maxClients = 20;
@@ -42,7 +54,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   override async onCreate(): Promise<void> {
     this.map = await loadJungleMap();
     this.state = new JungleState();
-
+    if(debug){ console.log(`Room ${this.roomId} created`) }
     this.onMessage(PLAYER_INPUT_MESSAGE, (client, message: unknown) => {
       this.onPlayerInput(client, message);
     });
@@ -56,6 +68,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       `Player-${client.sessionId.slice(0, 4)}`;
 
     const spawn = createPlayerState(DEFAULT_PLAYER_PHYSICS);
+    if(debug){ console.log(`${name} join room ${this.roomId}`) }
     this.sim.set(client.sessionId, {
       lastSeq: -1,
       inputStamps: [],
@@ -83,9 +96,54 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     this.state.players.set(client.sessionId, info);
   }
 
+  /**
+   * Non-consented disconnect (tab close, page reload, network blip): hold
+   * the player's seat + world entry so the same session can reconnect within
+   * the grace window. Colyseus reuses the sessionId on reconnect without
+   * calling `onJoin`, so the player's name and last accepted position
+   * survive. While away the player stays in `state.players` frozen at the
+   * last accepted spot; if the seat expires without a reconnect, `removePlayer`
+   * cleans up (the deferred rejects on timeout / room disposal).
+   */
+  override onDrop(client: Client): void {
+    const reconnection = this.allowReconnection(
+      client,
+      RECONNECT_GRACE_SECONDS,
+    );
+    if(debug){ console.log(`${this.state.players.get(client.sessionId)!.name} in ${this.roomId} drop`) }
+    reconnection.catch(() => this.removePlayer(client.sessionId));
+  }
+
+  /**
+   * Consented leave (Exit button, anti-cheat kick, or room disposal): the
+   * client is gone for good, so release the entry. Non-consented drops never
+   * reach this method — Colyseus routes them to `onDrop` when it's defined.
+   */
   override onLeave(client: Client): void {
-    this.sim.delete(client.sessionId);
-    this.state.players.delete(client.sessionId);
+    if(debug){ console.log(`${this.state.players.get(client.sessionId)!.name} in ${this.roomId} leave`) }
+    this.removePlayer(client.sessionId);
+  }
+
+  /**
+   * Called when a dropped client rejoins through the reserved seat. A
+   * reloaded page restarts its report `seq` at 0, so reset the ordering gate
+   * (otherwise every report is dropped as a retransmit) and re-baseline the
+   * speed clock (the first report may also arrive as a flushed buffer with
+   * near-zero wall-clock dt, which would otherwise look like a speed hack).
+   */
+  override onReconnect(client: Client): void {
+    const player = this.sim.get(client.sessionId);
+    if(debug){ console.log(`${this.state.players.get(client.sessionId)!.name} in ${this.roomId} reconnect`) }
+    if (player) {
+      player.lastSeq = -1;
+      player.inputStamps = [];
+      player.lastValidAt = 0;
+    }
+  }
+
+  private removePlayer(sessionId: string): void {
+    this.sim.delete(sessionId);
+    this.state.players.delete(sessionId);
   }
 
   override onDispose(): void {

@@ -44,6 +44,17 @@ const PLAYER_DIR = "/player";
 const INPUT_INTERVAL_MS = 50;
 
 /**
+ * Whether the collision-debug overlay should render: on when the
+ * NEXT_PUBLIC_DEBUG flag is "1" or "true" (case-insensitive), off
+ * otherwise. Plain `DEBUG` is server-only in Next.js — the browser client
+ * only sees NEXT_PUBLIC_-prefixed env vars (inlined at build time).
+ */
+function isCollisionDebugEnabled(): boolean {
+  const flag = process.env.NEXT_PUBLIC_DEBUG;
+  return flag === "1" || flag?.toLowerCase() === "true";
+}
+
+/**
  * Builds the single-scene config for the jungle room. `phaser` is the
  * runtime namespace returned by `await import("phaser")` in
  * `createJungleGame`.
@@ -110,7 +121,7 @@ export function buildJungleScene(
               map,
               render.rooms,
               collision,
-              { enabled: options.collisionDebug ?? true },
+              { enabled: options.collisionDebug ?? isCollisionDebugEnabled() },
             );
             (window as unknown as Record<string, unknown>).__jungleCollision =
               collision;
@@ -136,6 +147,22 @@ export function buildJungleScene(
             (window as unknown as Record<string, unknown>).__junglePlayer =
               player.sprite;
 
+            // Resumed session: start from where the server last accepted this
+            // player instead of the default spawn, so the first report is not
+            // a teleport and the sprite doesn't pop. If the state hasn't
+            // arrived yet, the update loop's snapshot sync snaps it in.
+            const resumed = room.state?.players.get(room.sessionId);
+            if (resumed) {
+              player.applyServerSnapshot({
+                x: resumed.x,
+                y: resumed.y,
+                vx: resumed.vx,
+                vy: resumed.vy,
+                grounded: resumed.grounded,
+                facing: resumed.facing,
+              });
+            }
+
             // Keyboard controls: arrows/WASD to move, Space/Up/W to jump.
             const keyboard = this.input.keyboard;
             cursors = keyboard?.createCursorKeys() ?? null;
@@ -154,6 +181,18 @@ export function buildJungleScene(
       if (!player || !grid || !container) return;
 
       const dt = Math.min(delta, 50) / 1000;
+
+      // Connection dropped (SDK auto-reconnecting in the background): freeze
+      // local simulation. The server has already stopped this player (no
+      // reports arrive), and simulating on would pile up position reports
+      // that flush as a burst on reconnect — near-zero wall-clock dt between
+      // them looks exactly like a speed hack. Rendering continues so the
+      // monkey stays visible where it stopped.
+      if (!room.connection.isOpen) {
+        player.render(dt);
+        syncRemotePlayers(this, room, remotePlayers, container, dt);
+        return;
+      }
 
       // --- Read input (edge-triggered jump). ---
       const left = Boolean(cursors?.left.isDown || keyA?.isDown);

@@ -62,7 +62,8 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `src/game/collision/collision-debug.ts` draws those as a Phaser overlay (green
   vertical walls, blue horizontal floors, orange slopes), toggleable via
   `__jungleCollisionDebug.setEnabled(false)`; `createJungleGame` takes
-  `{ collisionDebug?: boolean }` (default on).
+  `{ collisionDebug?: boolean }` (defaults to the `NEXT_PUBLIC_DEBUG` flag —
+  off unless it's "1"/"true").
 
 - **Player movement & netcode**: `src/game/player/player.ts` drives the
   monkey with the **shared physics** (`createPlayerState`/`stepPlayer` from
@@ -78,6 +79,34 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   other players render directly from server positions (eased). The sprite is
   flipped to `facing`; `render.rooms[0]` contains both local and remote
   sprites, so coordinates are room-local.
+
+- **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's
+  `reconnectionToken` + name in **sessionStorage** (survives reloads, not tab
+  closes). `play-screen.tsx` starts directly in a "resuming" phase on mount
+  when a session exists and silently re-enters the room via
+  `colyseusClient.reconnect(token, JungleState)` — the same sessionId, name
+  and last position come back, since the server holds the seat after a drop.
+  Because the phase initializer reads `sessionStorage` (client-only), the
+  screen gates its real UI behind an internal `booted` flag: SSR and the
+  first client frame both render a neutral loader, then the actual phase
+  (menu / reconnect / game) appears after mount. **Do not remove that gate**
+  or `/play` re-introduces a hydration mismatch every time a session
+  survives a reload — see `discoveries/play-screen-hydration-mismatch-sessionstorage.md`.
+  The resume effect uses a **live liveness ref** (not a `cancelled` closure
+  snapshot) to decide whether to adopt the reconnected room: StrictMode's
+  dev-only mount → unmount → mount re-arms the ref, so the reconnect is
+  adopted instead of being immediately left — see
+  `discoveries/jungle-resume-leaves-room-under-strictmode.md`.
+  Mid-session network blips are auto-reconnected by the Colyseus SDK's own
+  retry loop (`Room.reconnection`); while the socket is down
+  (`!room.connection.isOpen`) `jungle-scene.ts` **freezes local simulation**
+  so no movement reports pile up (a burst of buffered reports flushing on
+  reconnect has near-zero wall-clock dt and looks like a speed hack). On a
+  fresh mount the local player is seeded from its own broadcast position
+  (`applyServerSnapshot`) instead of `PLAYER_SPAWN`, so a resumed player
+  doesn't teleport on the first report. If the seat expires, `room.onLeave`
+  fires and the screen drops back to the menu with the name pre-filled;
+  deliberate exits always clear the stored session.
 
 - **Phaser must be imported dynamically** — its bundle touches `window` at
   module scope, so `createJungleGame()` does `await import("phaser")` (never

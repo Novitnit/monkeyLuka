@@ -175,3 +175,15 @@ from accepted client reports only (velocity clamped to the physics max) — a
 raw client-supplied position is never trusted, and after a stop the player
 only moves again once a report passes validation. Details live in the
 `shared`, `server`, and `web` workspace guides.
+
+**Reconnection**: a dropped client (page reload, tab close, network blip)
+holds its seat + world entry for `RECONNECT_GRACE_SECONDS` (default 30,
+`JUNGLE_RECONNECT_SECONDS`): the room's `onDrop` calls Colyseus
+`allowReconnection()`, so the session rejoins with the **same sessionId** via
+`client.reconnect(token)` and its name/last position survive. The web client
+stores the reconnect token in sessionStorage and silently resumes after a
+reload; mid-session blips are auto-reconnected by the Colyseus SDK's retry
+loop while the client freezes its local simulation (no movement reports pile
+up to look like a speed hack). `onReconnect` resets the report `seq` gate and
+the speed clock, since a reloaded page restarts its `seq` at 0. An explicit
+`leave()` (Exit button, anti-cheat kick) still removes the player for good.

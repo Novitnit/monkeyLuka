@@ -10,8 +10,9 @@ export type JungleRoom = Room<unknown, JungleRoomState>;
 export interface JungleGameOptions {
   /**
    * Draw the collision-geometry debug lines (green vertical walls, blue
-   * horizontal floors, orange slopes). Default true — disable via
-   * `__jungleCollisionDebug.setEnabled(false)` or pass false here.
+   * horizontal floors, orange slopes). Defaults to the NEXT_PUBLIC_DEBUG
+   * flag — off unless it's "1"/"true" — and can be overridden here or at
+   * runtime via `__jungleCollisionDebug.setEnabled(...)`.
    */
   collisionDebug?: boolean;
 }

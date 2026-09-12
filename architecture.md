@@ -164,6 +164,17 @@ defineServer({
     `PLAYER_SPAWN`) keyed by `client.sessionId`, clamping the name with
     `MAX_PLAYER_NAME_LENGTH`.
   - `onLeave` → delete the session's entry; `onDispose` → clear all.
+  - `onDrop` (non-consented disconnect: reload / tab close / blip) →
+    `allowReconnection(client, RECONNECT_GRACE_SECONDS)` holds the seat +
+    world entry so the session rejoins with the **same sessionId** and its
+    name/last position survive; `onReconnect` resets the report `seq` gate
+    (a reloaded page restarts `seq` at 0) and the speed clock. Consented
+    leaves (Exit button, kick) don't hold a seat.
+  - **Reconnection client-side**: `apps/web/src/lib/jungle-session.ts` stores
+    the `reconnectionToken` in sessionStorage; the Play screen resumes
+    silently after a reload (`client.reconnect`), and the Colyseus SDK's
+    retry loop covers mid-session blips while the client freezes its local
+    simulation (so no report burst looks like speed-hacking on reconnect).
   - **Anti-cheat**: input payloads are shape-checked, rate-limited
     (`ANTI_CHEAT.maxInputRatePerSecond`), seq-checked, and the reported
     trajectory is validated by `validatePositionReport()` against the last
