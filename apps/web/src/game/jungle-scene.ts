@@ -12,6 +12,7 @@
 import type Phaser from "phaser";
 import {
   COLLISION_LAYER_NAME,
+  PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
   buildTileGrid,
   type PlayerInput,
@@ -24,7 +25,12 @@ import {
   type RawTiledMap,
 } from "./map/tiled-map";
 import { renderTiledMap } from "./map/map-renderer";
-import { createPlayer, PLAYER_TEXTURE, type Player } from "./player/player";
+import { createPlayer, PLAYER_SPAWN, PLAYER_TEXTURE, SNAP_DISTANCE, type Player } from "./player/player";
+import {
+  PLAYER_JUMP_TEXTURE,
+  PLAYER_JOG_TEXTURE,
+  registerPlayerAnimations,
+} from "./player/animations";
 import { buildCollisionGeometry } from "./collision/collision-geometry";
 import { createCollisionDebug } from "./collision/collision-debug";
 import {
@@ -44,14 +50,18 @@ const PLAYER_DIR = "/player";
 const INPUT_INTERVAL_MS = 50;
 
 /**
- * Whether the collision-debug overlay should render: on when the
- * NEXT_PUBLIC_DEBUG flag is "1" or "true" (case-insensitive), off
- * otherwise. Plain `DEBUG` is server-only in Next.js — the browser client
- * only sees NEXT_PUBLIC_-prefixed env vars (inlined at build time).
+ * Whether the NEXT_PUBLIC_DEBUG flag is "1" or "true" (case-insensitive).
+ * Plain `DEBUG` is server-only in Next.js — the browser client only sees
+ * NEXT_PUBLIC_-prefixed env vars (inlined at build time). Gates the debug
+ * extras: the collision overlay and the R-key checkpoint return.
  */
-function isCollisionDebugEnabled(): boolean {
+function isDebugEnabled(): boolean {
   const flag = process.env.NEXT_PUBLIC_DEBUG;
   return flag === "1" || flag?.toLowerCase() === "true";
+}
+
+function isCollisionDebugEnabled(): boolean {
+  return isDebugEnabled();
 }
 
 /**
@@ -79,6 +89,17 @@ export function buildJungleScene(
   let keyA: Phaser.Input.Keyboard.Key | null = null;
   let keyD: Phaser.Input.Keyboard.Key | null = null;
   let keyW: Phaser.Input.Keyboard.Key | null = null;
+  /** Debug only (isDebugEnabled): R teleports back here. */
+  const checkpoint = { x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y };
+  let keyR: Phaser.Input.Keyboard.Key | null = null;
+  /**
+   * True between an R press and the server's snapshot confirming the jump.
+   * While pending, snapshot reconciliation is skipped: for ~one RTT the
+   * broadcast still holds the pre-teleport position, and snapping to it
+   * would undo the teleport and make the next report read as a
+   * teleport+speed violation against the re-baselined spawn.
+   */
+  let checkpointPending = false;
   let inputSeq = 0;
   let inputAccumulator = 0;
   const remotePlayers = new Map<string, RemotePlayerView>();
@@ -93,10 +114,12 @@ export function buildJungleScene(
       const name = me?.name ?? "unknown";
       (window as unknown as Record<string, unknown>).__jungleName = name;
 
-      // Load the Tiled map plus the player sprite, then resolve its
+      // Load the Tiled map plus the player sprite sheets, then resolve its
       // tilesets, render the rooms, and drop the player at spawn.
       this.load.json("jungle-map", `${MAP_DIR}/${MAP_FILE}`);
       this.load.image(PLAYER_TEXTURE, `${PLAYER_DIR}/sheets/idle.png`);
+      this.load.image(PLAYER_JOG_TEXTURE, `${PLAYER_DIR}/sheets/jog.png`);
+      this.load.image(PLAYER_JUMP_TEXTURE, `${PLAYER_DIR}/sheets/jump.png`);
       this.load.once(phaser.Loader.Events.COMPLETE, () => {
         void (async () => {
           try {
@@ -142,6 +165,10 @@ export function buildJungleScene(
             grid = buildTileGrid(layer);
             container = render.rooms[0];
 
+            // Register the idle/jog/jump animations (needs the sheets that
+            // just finished loading) before any sprite is spawned.
+            registerPlayerAnimations(this);
+
             // Drop the player into the first (only) room at spawn.
             player = createPlayer(this, container, grid);
             (window as unknown as Record<string, unknown>).__junglePlayer =
@@ -169,6 +196,13 @@ export function buildJungleScene(
             keyA = keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.A) ?? null;
             keyD = keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.D) ?? null;
             keyW = keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.W) ?? null;
+            // Debug only: R returns to the checkpoint. The room always
+            // accepts the checkpoint message (its target is the
+            // server-chosen spawn, so it can't bypass the anti-cheat) and
+            // re-baselines its validation so the jump isn't a violation.
+            keyR = isDebugEnabled()
+              ? keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.R) ?? null
+              : null;
           } catch (err) {
             console.error("Failed to load the jungle map:", err);
           }
@@ -205,6 +239,15 @@ export function buildJungleScene(
           (keyW && phaser.Input.Keyboard.JustDown(keyW)),
       );
 
+      // --- Debug: R returns to the checkpoint. Only registered when
+      // NEXT_PUBLIC_DEBUG is on; the room's checkpoint handler re-baselines
+      // its validation at the spawn so the jump isn't a violation. ---
+      if (keyR && phaser.Input.Keyboard.JustDown(keyR)) {
+        player.teleportTo(checkpoint.x, checkpoint.y);
+        checkpointPending = true;
+        room.send(PLAYER_CHECKPOINT_MESSAGE, {});
+      }
+
       // --- Local simulation (shared physics; collision is client-side). ---
       const input: PlayerInput = { left, right, jump: jumpPressed };
       player.setInput(input);
@@ -228,17 +271,32 @@ export function buildJungleScene(
         });
       }
 
-      // --- Reconcile against the authoritative snapshot. ---
+      // --- Reconcile against the authoritative snapshot. While a checkpoint
+      // jump is pending, the broadcast still holds the pre-teleport position
+      // (~one RTT stale), so reconciliation is frozen until it confirms the
+      // jump; otherwise the snap-back generates a teleport+speed violation.
+      // Reports keep flowing meanwhile — they are all sent from the spawn
+      // point and ordered after the checkpoint message, so the re-baselined
+      // server accepts them. ---
       const mine = room.state.players.get(room.sessionId);
       if (mine) {
-        player.applyServerSnapshot({
-          x: mine.x,
-          y: mine.y,
-          vx: mine.vx,
-          vy: mine.vy,
-          grounded: mine.grounded,
-          facing: mine.facing,
-        });
+        if (
+          checkpointPending &&
+          Math.hypot(mine.x - checkpoint.x, mine.y - checkpoint.y) <=
+            SNAP_DISTANCE
+        ) {
+          checkpointPending = false;
+        }
+        if (!checkpointPending) {
+          player.applyServerSnapshot({
+            x: mine.x,
+            y: mine.y,
+            vx: mine.vx,
+            vy: mine.vy,
+            grounded: mine.grounded,
+            facing: mine.facing,
+          });
+        }
       }
       player.render(dt);
 

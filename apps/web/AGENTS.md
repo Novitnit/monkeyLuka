@@ -37,10 +37,16 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `src/game/player/player.ts`, drives input, ~20 Hz reports and snapshot
   reconciliation). Remote players are rendered by
   `src/game/player/remote-players.ts` (one sprite per other session, eased
-  toward the server position from sprite sheets `Assets/player/sheets/idle.png`,
-  served via the `public/player` symlink; spawn **96,176** inside the first
-  room). The sprite is a child of the room container so it inherits room
-  scale/position. Tiled loading lives in `src/game/map/tiled-map.ts`
+  toward the server position, animated from the `idle`/`jog`/`jump` sprite
+  sheets in `Assets/player/sheets`, served via the `public/player` symlink;
+  spawn **96,176** inside the first room). The sprite is a child of the room
+  container so it inherits room scale/position.
+  Player animations are registered by `src/game/player/animations.ts`
+  (16×16 cells: `jog` uses 8 of a 3×3 sheet, `jump` 5 of a 2×3 sheet,
+  row-major; the jump arc plays once, the rest loop) and driven from state —
+  airborne → jump, grounded + moving → jog, grounded + still → idle — via
+  the shared physics for the local monkey and the `PlayerInfo` broadcast
+  (`grounded`/`vx`) for remotes. Tiled loading lives in `src/game/map/tiled-map.ts`
   (engine-free: fetches `Assets/map/main.json` + `.tsx` tilesets via the
   `public/map` symlink) with the tileset fetch/parse/image helpers in
   `src/game/map/tileset-loader.ts`; the Phaser rendering in
@@ -78,7 +84,18 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   clamped lean-in) so a report the server rejected visibly stops the monkey;
   other players render directly from server positions (eased). The sprite is
   flipped to `facing`; `render.rooms[0]` contains both local and remote
-  sprites, so coordinates are room-local.
+  sprites, so coordinates are room-local. **Debug only** (`NEXT_PUBLIC_DEBUG`):
+  R teleports the local monkey back to its checkpoint — a scene-level
+  `checkpoint` starting at `PLAYER_SPAWN` (update it there when real
+  checkpoints land) — via `player.teleportTo()` plus a
+  `PLAYER_CHECKPOINT_MESSAGE` to the room, whose always-registered handler
+  re-baselines validation at the spawn so the jump isn't a teleport
+  violation (the room accepts it unconditionally: the target is the
+  server-chosen spawn, so it can't bypass the anti-cheat). Snapshot
+  reconciliation is **frozen until the server confirms the jump**
+  (`checkpointPending`): the broadcast is ~one RTT stale and snapping to it
+  would undo the teleport and read as a teleport+speed violation — see
+  `discoveries/checkpoint-return-race-stale-snapshot-teleport-violations.md`.
 
 - **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's
   `reconnectionToken` + name in **sessionStorage** (survives reloads, not tab

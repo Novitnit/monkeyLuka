@@ -97,6 +97,33 @@ several individually-plausible reports is not caught (catch it by re-enabling
 server-side re-simulation if that ever matters). Set
 `JUNGLE_DEBUG_VALIDATION=1` to log rejected reports with their delta/flags.
 
+### Checkpoint return (R key, debug)
+
+The room always registers the `PLAYER_CHECKPOINT_MESSAGE` handler: it
+teleports the player back to the spawn point (`PLAYER_SPAWN`), re-baselines
+`lastValid`/`lastValidAt` so the jump isn't a teleport violation, and writes
+the new state to the schema. It is **unconditional on purpose**: the target
+is the server-chosen spawn (never a client-supplied position), so accepting
+can't bypass the anti-cheat — a forged message merely resets the sender to
+spawn. Gating it on a server debug flag would instead drop or kick players
+when the web/server flags mismatch (see
+`discoveries/checkpoint-message-drops-player-unregistered-handler.md`). The
+**R key itself is debug-only** on the client (`NEXT_PUBLIC_DEBUG` in
+`apps/web`), which is the only flag that needs setting.
+
+The server re-baselines its validation state at the spawn point and broadcasts
+the jump, so the client's reports validate immediately after it. Clients
+therefore **freeze snapshot reconciliation** until the broadcast confirms the
+jump (~one RTT): a report sent from the pre-teleport position after the
+re-baseline reads as a teleport+speed violation — see
+`discoveries/checkpoint-return-race-stale-snapshot-teleport-violations.md`.
+
+Colyseus gotcha this uncovered: a client message with **no registered
+handler** is fatal to that client — `RoomMessages.#noHandler` calls
+`client.leave(CloseCode.WITH_ERROR)` in non-dev mode (dev mode only sends an
+error). Never let a client send a message type the room may not have
+registered.
+
 ### Reconnection (drop → resume on the same seat)
 
 A non-consented disconnect (tab close, reload, network blip) hits `onDrop`,

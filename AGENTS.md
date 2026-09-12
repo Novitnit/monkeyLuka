@@ -174,7 +174,12 @@ violations count toward a kick. `PlayerInfo` position/velocity fields come
 from accepted client reports only (velocity clamped to the physics max) — a
 raw client-supplied position is never trusted, and after a stop the player
 only moves again once a report passes validation. Details live in the
-`shared`, `server`, and `web` workspace guides.
+`shared`, `server`, and `web` workspace guides. **Debug** (`NEXT_PUBLIC_DEBUG`,
+off unless "1"/"true"): the collision-debug overlay renders, and R teleports
+the player back to its checkpoint (starting at the spawn point) through a
+`PLAYER_CHECKPOINT_MESSAGE` the room always accepts (its target is the
+server-chosen spawn, so it can't bypass the anti-cheat) — only the R key
+itself is debug-gated, on the web side.
 
 **Reconnection**: a dropped client (page reload, tab close, network blip)
 holds its seat + world entry for `RECONNECT_GRACE_SECONDS` (default 30,

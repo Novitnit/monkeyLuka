@@ -15,6 +15,17 @@ import type { SolidGrid } from "./tiles";
 export const PLAYER_INPUT_MESSAGE = "player:input";
 
 /**
+ * Debug wire message: the client asks to be teleported back to its
+ * checkpoint (the R key). The room registers the handler **unconditionally**
+ * — its target is the server-chosen spawn, never a client-supplied
+ * position, so a forged message can't bypass the anti-cheat — and the room
+ * re-baselines its validation at the spawn so the jump isn't a teleport
+ * violation. Only the R key itself is debug-gated, on the web side
+ * (`NEXT_PUBLIC_DEBUG`).
+ */
+export const PLAYER_CHECKPOINT_MESSAGE = "player:checkpoint";
+
+/**
  * Payload of `PLAYER_INPUT_MESSAGE`. Collision runs **client-side** (see
  * `stepPlayer`); this is the client's per-report summary of its simulated
  * state (position, velocity, contact, facing). Everything is advisory — the

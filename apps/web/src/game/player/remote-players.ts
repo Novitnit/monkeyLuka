@@ -8,6 +8,7 @@
 import type Phaser from "phaser";
 import type { JungleRoom } from "../jungle-game";
 import { PLAYER_TEXTURE } from "./player";
+import { setPlayerAnimation } from "./animations";
 
 /** Remote players ease toward their latest server position; rate per second. */
 const REMOTE_LERP_RATE = 12;
@@ -46,6 +47,8 @@ export function syncRemotePlayers(
     view.targetX = info.x;
     view.targetY = info.y;
     view.sprite.setFlipX(info.facing < 0);
+    // Remote animation state comes straight from the authoritative broadcast.
+    setPlayerAnimation(view.sprite, info.grounded, info.vx);
   }
 
   // Remove sprites whose players left the room.

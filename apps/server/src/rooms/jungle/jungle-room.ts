@@ -4,6 +4,7 @@ import {
   DEFAULT_PLAYER_PHYSICS,
   JungleState,
   MAX_PLAYER_NAME_LENGTH,
+  PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
   PlayerInfo,
   createPlayerState,
@@ -57,6 +58,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     if(debug){ console.log(`Room ${this.roomId} created`) }
     this.onMessage(PLAYER_INPUT_MESSAGE, (client, message: unknown) => {
       this.onPlayerInput(client, message);
+    });
+    this.onMessage(PLAYER_CHECKPOINT_MESSAGE, (client) => {
+      this.onCheckpointReturn(client);
     });
     // No fixed-timestep simulation: movement is client-simulated, so the room
     // has no per-tick work — validation happens on each input report.
@@ -138,6 +142,49 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       player.lastSeq = -1;
       player.inputStamps = [];
       player.lastValidAt = 0;
+    }
+  }
+
+  /**
+   * Teleport a client back to its checkpoint (the browser R key, sent only
+   * by debug-enabled clients). Registered **unconditionally**: the handler's
+   * target is the server-chosen `PLAYER_SPAWN`, never a client-supplied
+   * position, so accepting it can't bypass the anti-cheat — a forged message
+   * merely resets the sender to spawn. Leaving it unregistered instead
+   * drops the client outright (Colyseus `client.leave`s on a message with
+   * no handler in non-dev mode), and gating it on the server's debug flag
+   * would let a flag mismatch (web debug on, server off) kick the player via
+   * teleport violations. See
+   * `discoveries/checkpoint-message-drops-player-unregistered-handler.md`.
+   *
+   * The server re-baselines its validation state at the spawn point and
+   * broadcasts the jump, so the client's next reports validate instead of
+   * reading as a teleport violation (which would stop and eventually kick
+   * the player).
+   */
+  private onCheckpointReturn(client: Client): void {
+    const player = this.sim.get(client.sessionId);
+    if (!player) return;
+    const spawn = createPlayerState(DEFAULT_PLAYER_PHYSICS);
+    player.lastValid = {
+      x: spawn.x,
+      y: spawn.y,
+      vx: spawn.vx,
+      vy: spawn.vy,
+      grounded: spawn.grounded,
+      facing: spawn.facing,
+    };
+    // Re-baseline the speed clock so the next report isn't compared against
+    // the pre-teleport position.
+    player.lastValidAt = Date.now();
+    const info = this.state.players.get(client.sessionId);
+    if (info) {
+      writeIfChanged(info, "x", player.lastValid.x);
+      writeIfChanged(info, "y", player.lastValid.y);
+      writeIfChanged(info, "vx", player.lastValid.vx);
+      writeIfChanged(info, "vy", player.lastValid.vy);
+      writeIfChanged(info, "grounded", player.lastValid.grounded);
+      writeIfChanged(info, "facing", player.lastValid.facing);
     }
   }
 

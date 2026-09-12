@@ -19,9 +19,13 @@ import {
   type PlayerStepResult,
   type SolidGrid,
 } from "@monkeyluka/shared";
+import {
+  PLAYER_IDLE_TEXTURE,
+  setPlayerAnimation,
+} from "./animations";
 
 /** Sprite-sheet texture key the jungle scene loads for the player. */
-export const PLAYER_TEXTURE = "player-idle";
+export const PLAYER_TEXTURE = PLAYER_IDLE_TEXTURE;
 
 export { PLAYER_SPAWN };
 
@@ -33,7 +37,7 @@ export { PLAYER_SPAWN };
 const MAX_STEP_DT = 1 / 20;
 
 /** Error beyond which the local prediction is discarded for the server's. */
-const SNAP_DISTANCE = 32;
+export const SNAP_DISTANCE = 32;
 /** How quickly the render correction closes a sub-snap error (per second). */
 const CORRECTION_RATE = 8;
 /** Cap on the render correction, px — keeps corrections imperceptible. */
@@ -60,6 +64,8 @@ export interface Player {
   update(dt: number): PlayerStepResult;
   /** Reconciles against the server's broadcast snapshot. */
   applyServerSnapshot(snapshot: PlayerSnapshot): void;
+  /** Debug: instantly places the simulation at (x, y) with zero velocity. */
+  teleportTo(x: number, y: number): void;
   /** Writes the (corrected) predicted position to the sprite. */
   render(dt: number): void;
   destroy(): void;
@@ -131,6 +137,17 @@ export function createPlayer(
       target.y = ey;
     },
 
+    teleportTo(x: number, y: number): void {
+      physics.x = x;
+      physics.y = y;
+      physics.vx = 0;
+      physics.vy = 0;
+      correction.x = 0;
+      correction.y = 0;
+      target.x = 0;
+      target.y = 0;
+    },
+
     render(dt: number): void {
       const rate = Math.min(1, CORRECTION_RATE * dt);
       correction.x += (target.x - correction.x) * rate;
@@ -140,6 +157,8 @@ export function createPlayer(
       sprite.x = physics.x + clamp(correction.x);
       sprite.y = physics.y + clamp(correction.y);
       sprite.setFlipX(physics.facing < 0);
+      // Frame the idle/jog/jump animation from the simulated motion state.
+      setPlayerAnimation(sprite, physics.grounded, physics.vx);
     },
 
     destroy(): void {
