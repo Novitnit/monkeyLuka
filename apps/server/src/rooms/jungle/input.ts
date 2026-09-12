@@ -28,6 +28,7 @@ export function sanitizePlayerInput(message: unknown): PlayerInputMessage | null
     typeof m.vy !== "number" ||
     !Number.isFinite(m.vy) ||
     typeof m.grounded !== "boolean" ||
+    typeof m.clinging !== "boolean" ||
     typeof m.facing !== "number" ||
     !Number.isFinite(m.facing)
   ) {
@@ -41,6 +42,7 @@ export function sanitizePlayerInput(message: unknown): PlayerInputMessage | null
     vx: m.vx,
     vy: m.vy,
     grounded: m.grounded,
+    clinging: m.clinging,
     // Normalize: remote sprites flip on this, so anything else is a lie we
     // don't want broadcast.
     facing: m.facing >= 0 ? 1 : -1,

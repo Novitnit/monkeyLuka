@@ -7,6 +7,7 @@
 
 import {
   TILE_SIZE,
+  TILE_SLOPE_BR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
@@ -34,8 +35,9 @@ function pointInTileSolid(
   const dx = x - tx * TILE_SIZE;
   const dy = y - ty * TILE_SIZE;
   if (kind === TILE_SLOPE_TL_BR) return dy <= dx;
-  // TILE_SLOPE_TR_BL
-  return dx + dy <= TILE_SIZE;
+  if (kind === TILE_SLOPE_TR_BL) return dx + dy <= TILE_SIZE;
+  // TILE_SLOPE_BR — the mirror of 109, solid below the same line.
+  return dx + dy >= TILE_SIZE;
 }
 
 /**
@@ -69,8 +71,13 @@ function aabbTouchesSolid(
     // Solid where dy ≤ dx: reachable iff the lowest dy is ≤ the highest dx.
     return oy0 <= ox1;
   }
-  // TILE_SLOPE_TR_BL — solid where dx + dy ≤ TILE_SIZE.
-  return ox0 + oy0 <= TILE_SIZE;
+  if (kind === TILE_SLOPE_TR_BL) {
+    // Solid where dx + dy ≤ TILE_SIZE: reachable iff the lowest corner is.
+    return ox0 + oy0 <= TILE_SIZE;
+  }
+  // TILE_SLOPE_BR — solid where dx + dy ≥ TILE_SIZE: reachable iff the
+  // highest corner is.
+  return ox1 + oy1 >= TILE_SIZE;
 }
 
 /** Does the AABB overlap any solid region on the grid? */
@@ -91,6 +98,36 @@ export function isBoxSolid(
     for (let tx = x0; tx <= x1; tx++) {
       if (tx < 0 || ty < 0 || tx >= grid.width || ty >= grid.height) continue;
       if (aabbTouchesSolid(grid, tx, ty, x, y, hw, hh)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Is there solid geometry immediately beside the AABB in `dir` (+1 right,
+ * -1 left)? Probes a thin strip just past the box's side edge, so a box
+ * flush with a wall reads as "beside" it while a box a few px short of it
+ * does not. Used by the wall-cling (grab) check in player.ts.
+ */
+export function wallBeside(
+  grid: SolidGrid,
+  x: number,
+  y: number,
+  hw: number,
+  hh: number,
+  dir: 1 | -1,
+): boolean {
+  const probe = 2;
+  const cx = dir > 0 ? x + hw + probe / 2 : x - hw - probe / 2;
+  const half = probe / 2;
+  const x0 = Math.floor((cx - half) / TILE_SIZE);
+  const x1 = Math.floor((cx + half) / TILE_SIZE);
+  const y0 = Math.floor((y - hh) / TILE_SIZE);
+  const y1 = Math.floor((y + hh) / TILE_SIZE);
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if (tx < 0 || ty < 0 || tx >= grid.width || ty >= grid.height) continue;
+      if (aabbTouchesSolid(grid, tx, ty, cx, y, half, hh)) return true;
     }
   }
   return false;
@@ -134,7 +171,8 @@ export function horizontalPenetration(
  * at the max x of the moving edge), for 109 it falls rightward (surface y =
  * top + TILE_SIZE - dx, deepest at the min x). The moving edge (bottom while
  * falling, top while rising) drives the contact, so landing on a slope is an
- * exact stop against the line.
+ * exact stop against the line. 262 shares 109's surface (the same TR→BL
+ * line, solid below it).
  */
 export function verticalPenetration(
   grid: SolidGrid,
@@ -177,7 +215,8 @@ export function verticalPenetration(
         // Solid where dy ≤ dx → deepest at the largest dx of the edge.
         surfaceY = top + edgeMax;
       } else {
-        // Solid where dx + dy ≤ TILE_SIZE → deepest at the smallest dx.
+        // 109/262 share the TR→BL line (solid above it for 109, below it
+        // for 262) → same surface, deepest at the smallest dx.
         surfaceY = top + TILE_SIZE - edgeMin;
       }
 

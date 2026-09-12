@@ -54,7 +54,8 @@ state: JungleRoomState }>` from the shared `schema()` API — no decorators.
 It tracks joined players (`sessionId → name`) in the shared `JungleState`
 schema, clamping names with `MAX_PLAYER_NAME_LENGTH` from `@monkeyluka/shared`.
 `PlayerInfo` also carries the **broadcast** movement state — `x, y, vx, vy,
-grounded, facing` — written only by the room's report handler (see below).
+grounded, clinging, facing` — written only by the room's report handler (see
+below).
 
 Because `noImplicitOverride` is on (Bun baseline), Colyseus lifecycle methods
 (`onCreate`, `onJoin`, `onLeave`, `onDispose`) and any base-class property you
@@ -74,14 +75,16 @@ only validates each report and relays it:
    `JUNGLE_MAP_PATH`) and registers the `PLAYER_INPUT_MESSAGE` handler. There is
    no `setFixedTimestep` and no simulation loop.
 2. `onPlayerInput` sanitizes the payload shape (finite position/velocity/
-   grounded/facing), applies a **flood rate limit**
+   grounded/clinging/facing), applies a **flood rate limit**
    (`ANTI_CHEAT.maxInputRatePerSecond`), drops non-increasing `seq` (the
    WebSocket is ordered, so that means forgery/retransmit), then runs
    `validatePositionReport()` against the **last accepted report** — teleport
    (too far from it, or buried in solid geometry) and abnormal-speed checks.
 3. A clean report becomes the new broadcast state: its `x/y/vx/vy/grounded/
-   facing` are written to `PlayerInfo` (only changed fields, to cut patch
-   churn; velocity is clamped to the physics ceiling since it is display-only).
+   clinging/facing` are written to `PlayerInfo` (only changed fields, to cut
+   patch churn; velocity is clamped to the physics ceiling since it is
+   display-only — the horizontal clamp follows `max(runSpeed,
+   wallJumpSpeed)` so wall-jump launches aren't undercut).
    A failing report **stops the player** — the broadcast keeps the last
    accepted position with velocity zeroed — and increments the violation
    counter; the client is kicked at `ANTI_CHEAT.maxViolations`. After a stop
@@ -143,8 +146,10 @@ sustained abnormal-movement report stream **before** a reload (already at
 violation count N) resumes counting from N after the reconnect.
 
 Known limitation: `stepPlayer` blocks against slope *faces* horizontally, so
-walkable ramps aren't supported — the current map only uses 109/110 as
-under-bevels. Keep that in mind if new slope tiles become floors.
+walkable ramps aren't supported — the physics treats 109/110/262 as sloped
+edges (262 is 109's mirror, solid on the bottom-right half, and blocks
+laterally exactly like its siblings). Keep that in mind if slope tiles
+become walkable ramps.
 
 ## Colyseus 0.18 quirks
 

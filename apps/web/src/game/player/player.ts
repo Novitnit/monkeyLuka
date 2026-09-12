@@ -4,8 +4,9 @@
  * step IS the player's movement (rendered immediately); the server validates
  * the reports derived from it and can stop the player. The sprite sheets are
  * served from `public/player` (a symlink to `Assets/player/sheets`), and
- * coordinates are room-local because the sprite is a child of the room
- * container and inherits its position/scale.
+ * coordinates are room-local because the sprite is a child of the scene's
+ * player layer (a transform twin of room 0, added above all the rooms) and
+ * inherits its position/scale.
  */
 
 import type Phaser from "phaser";
@@ -50,6 +51,7 @@ export interface PlayerSnapshot {
   vx: number;
   vy: number;
   grounded: boolean;
+  clinging: boolean;
   facing: number;
 }
 
@@ -127,6 +129,7 @@ export function createPlayer(
         physics.vx = snapshot.vx;
         physics.vy = snapshot.vy;
         physics.grounded = snapshot.grounded;
+        physics.clinging = snapshot.clinging;
         correction.x = 0;
         correction.y = 0;
         target.x = 0;
@@ -157,8 +160,8 @@ export function createPlayer(
       sprite.x = physics.x + clamp(correction.x);
       sprite.y = physics.y + clamp(correction.y);
       sprite.setFlipX(physics.facing < 0);
-      // Frame the idle/jog/jump animation from the simulated motion state.
-      setPlayerAnimation(sprite, physics.grounded, physics.vx);
+      // Frame the idle/cling/jog/jump animation from the simulated state.
+      setPlayerAnimation(sprite, physics.grounded, physics.vx, physics.clinging);
     },
 
     destroy(): void {

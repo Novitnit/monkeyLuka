@@ -7,7 +7,7 @@
 import type { PlayerInfo } from "@monkeyluka/shared";
 
 /** Writes a schema field only when its value changed (less patch churn). */
-export function writeIfChanged<K extends "x" | "y" | "vx" | "vy" | "grounded" | "facing">(
+export function writeIfChanged<K extends "x" | "y" | "vx" | "vy" | "grounded" | "clinging" | "facing">(
   info: InstanceType<typeof PlayerInfo>,
   key: K,
   value: InstanceType<typeof PlayerInfo>[K],

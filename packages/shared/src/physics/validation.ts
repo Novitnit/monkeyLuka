@@ -45,6 +45,8 @@ export interface PlayerInputMessage {
   vy: number;
   /** Resulting contact state — advisory. */
   grounded: boolean;
+  /** Resulting wall-cling state — advisory. */
+  clinging: boolean;
   /** Resulting facing, 1 right / -1 left — advisory (normalized on server). */
   facing: number;
 }

@@ -10,6 +10,7 @@ import {
   DEFAULT_PLAYER_PHYSICS,
   PLAYER_SPAWN,
   TILE_SIZE,
+  TILE_SLOPE_BR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
@@ -62,16 +63,19 @@ function settle(grid: SolidGrid, x: number, y: number) {
 describe("tile grid", () => {
   test("builds kinds from gids and ignores non-solid tiles", () => {
     const grid = buildTileGrid(
-      layer(4, 1, [0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL]),
+      layer(5, 1, [0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR]),
     );
     expect(grid.kinds[0]).toBe(0);
     expect(grid.kinds[1]).toBe(TILE_SOLID);
     expect(grid.kinds[2]).toBe(TILE_SLOPE_TL_BR);
     expect(grid.kinds[3]).toBe(TILE_SLOPE_TR_BL);
+    expect(grid.kinds[4]).toBe(TILE_SLOPE_BR);
   });
 
   test("point solidity respects the exact slope halves", () => {
-    const grid = buildTileGrid(layer(2, 1, [TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL]));
+    const grid = buildTileGrid(
+      layer(3, 1, [TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR]),
+    );
     // 110 at (0,0): solid where dy <= dx (top-left half).
     expect(isPointSolid(grid, 2, 2)).toBe(true); // dx2, dy2
     expect(isPointSolid(grid, 12, 12)).toBe(true);
@@ -82,12 +86,23 @@ describe("tile grid", () => {
     expect(isPointSolid(grid, 16 + 2, 12)).toBe(true); // top half… 2+12=14 <= 16
     expect(isPointSolid(grid, 16 + 12, 12)).toBe(false); // 24 > 16, open
     expect(isPointSolid(grid, 16 + 14, 1)).toBe(true); // 15 <= 16
+    // 262 at (2,0): solid where dx + dy >= 16 (bottom-right half, mirror of 109).
+    expect(isPointSolid(grid, 32 + 12, 12)).toBe(true); // 24 >= 16
+    expect(isPointSolid(grid, 32 + 4, 4)).toBe(false); // 8 < 16, open
+    expect(isPointSolid(grid, 32 + 15, 1)).toBe(true); // 16 >= 16, on the line
+    expect(isPointSolid(grid, 32 + 1, 15)).toBe(true); // 16 >= 16, on the line
   });
 
   test("box solidity reports overlap with slopes and blocks", () => {
     const grid = buildTileGrid(layer(2, 1, [0, TILE_SOLID]));
     expect(isBoxSolid(grid, 24, 8, 10, 14)).toBe(true); // into tile 1
     expect(isBoxSolid(grid, 8, 8, 10, 14)).toBe(false);
+
+    // A box fully inside 262's solid half touches it; a box tucked into the
+    // open top-left corner does not.
+    const wedge = buildTileGrid(layer(2, 2, [0, 0, 0, TILE_SLOPE_BR]));
+    expect(isBoxSolid(wedge, 24, 24, 10, 10)).toBe(true); // dx+d∈[3,13]: corner 26 ≥ 16
+    expect(isBoxSolid(wedge, 17, 17, 4, 4)).toBe(false); // corner 3+3 < 16
   });
 
   test("gridPixelSize derives world bounds", () => {
@@ -337,6 +352,28 @@ describe("slopes", () => {
     expect(state.grounded).toBe(true);
     expect(state.y).toBeCloseTo(3 * TILE_SIZE + 13 - config.height / 2, 3);
   });
+
+  test("lands exactly on a 262 (TR→BL, bottom-right) wedge surface", () => {
+    const grid = buildTileGrid(layer(4, 4, [
+      0, 0, 0, 0,
+      0, 0, 0, 0,
+      0, 0, 0, 0,
+      TILE_SOLID, TILE_SOLID, TILE_SLOPE_BR, 0,
+    ]));
+    // The wedge's solid bottom-right half shares the TR→BL line with 109,
+    // so the surface math is identical: the box's left edge crosses it at
+    // dx = 2.5·16 − 6.5 − 32 = 1.5 → contact y = 48 + (16 − 1.5) = 62.5,
+    // center 62.5 − 7 = 55.5.
+    const state = createPlayerState(config);
+    state.x = 2.5 * TILE_SIZE;
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 600; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(3 * TILE_SIZE + (TILE_SIZE - 1.5) - config.height / 2, 3);
+  });
 });
 
 describe("the real jungle map", () => {
@@ -447,6 +484,204 @@ describe("the real jungle map", () => {
     }
     expect(state.grounded).toBe(true);
     expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
+  });
+});
+
+describe("wall cling", () => {
+  /** Tall wall column at tile x=4 (rows 0..8) + a full floor at row 9. */
+  function wallGrid(): SolidGrid {
+    const gids = new Array<number>(8 * 10).fill(0);
+    for (let y = 0; y < 9; y++) gids[y * 8 + 4] = TILE_SOLID;
+    for (let x = 0; x < 8; x++) gids[9 * 8 + x] = TILE_SOLID;
+    return buildTileGrid(layer(8, 10, gids));
+  }
+
+  /** Mid-air, flush against the wall's left face at x=4·16=64, falling. */
+  function fallingBesideWall() {
+    const grid = wallGrid();
+    const state = createPlayerState(config);
+    state.x = 4 * TILE_SIZE - config.width / 2; // 56 → right edge flush at 64
+    state.y = 3 * TILE_SIZE; // row 3, well above the floor
+    return { grid, state };
+  }
+
+  /** Runs the grab until `state.clinging`, using a fresh fallingBesideWall(). */
+  function grabTheWall() {
+    const { grid, state } = fallingBesideWall();
+    for (let i = 0; i < 10; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: true },
+        grid,
+        STEP,
+        config,
+      );
+      if (state.clinging) break;
+    }
+    expect(state.clinging).toBe(true);
+    expect(state.clingDir).toBe(1); // the wall is on the right
+    return { grid, state };
+  }
+
+  test("grabs a wall while airborne and moving into it, then hangs (no gravity)", () => {
+    const { grid, state } = grabTheWall();
+    const y = state.y;
+    // Clinging with gravity off: the height stays frozen forever.
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      expect(state.clinging).toBe(true);
+      expect(state.y).toBe(y);
+      expect(state.vy).toBe(0);
+    }
+  });
+
+  test("pressing jump while clinging launches up and away from the wall", () => {
+    const { grid, state } = grabTheWall();
+    const startY = state.y;
+
+    // Press jump while hanging: buffered at the end of this step, so the
+    // launch fires on the next step.
+    stepPlayer(state, { left: false, right: false, jump: true }, grid, STEP, config);
+    expect(state.clinging).toBe(true); // still hanging during the buffer step
+
+    stepPlayer(state, noInput, grid, STEP, config);
+    expect(state.clinging).toBe(false);
+    expect(state.vx).toBeLessThan(0); // away from the wall (wall on the right)
+    expect(state.vy).toBeLessThan(0); // upward
+
+    // And it keeps rising for a while before gravity returns.
+    let rose = false;
+    for (let i = 0; i < 12; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.y < startY - 10) rose = true;
+    }
+    expect(rose).toBe(true);
+  });
+
+  test("pressing away from the wall releases the cling and the player falls", () => {
+    const { grid, state } = grabTheWall();
+    stepPlayer(state, { left: true, right: false, jump: false }, grid, STEP, config);
+    expect(state.clinging).toBe(false);
+    const y = state.y;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+    }
+    expect(state.y).toBeGreaterThan(y);
+  });
+
+  test("a ground jump next to a wall is still a normal jump, not a grab", () => {
+    const grid = wallGrid();
+    const state = settle(grid, 3 * TILE_SIZE, 9 * TILE_SIZE); // flush, grounded
+    expect(state.grounded).toBe(true);
+    let jumped = false;
+    for (let i = 0; i < 30 && !jumped; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: i === 0 },
+        grid,
+        STEP,
+        config,
+      );
+      jumped = state.vy < -100;
+    }
+    expect(jumped).toBe(true);
+    expect(state.clinging).toBe(false);
+  });
+
+  test("airborne beside a wall but steering away does not grab", () => {
+    const { grid, state } = fallingBesideWall();
+    const startY = state.y;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: true },
+        grid,
+        STEP,
+        config,
+      );
+      expect(state.clinging).toBe(false);
+    }
+    expect(state.y).toBeGreaterThan(startY); // fell instead of grabbing
+  });
+
+  test("cling + wall-jump reports pass trajectory validation", () => {
+    const { grid, state } = fallingBesideWall();
+    let lastValid = { x: state.x, y: state.y };
+    let previous = { px: state.x, py: state.y };
+    let grabbed = false;
+    const violations: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      const input: PlayerInput = !grabbed
+        ? { left: false, right: true, jump: true }
+        : i === 12
+          ? { left: false, right: false, jump: true } // buffer the wall jump
+          : { left: false, right: false, jump: false };
+      stepPlayer(state, input, grid, 1 / 20, config);
+      if (!grabbed && state.clinging) grabbed = true;
+      violations.push(
+        ...validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          previous,
+          0.05,
+          config,
+        ),
+      );
+      lastValid = { x: state.x, y: state.y };
+      previous = { px: state.x, py: state.y };
+    }
+    expect(grabbed).toBe(true);
+    expect(violations).toEqual([]);
+  });
+
+  test("grabs the right platform face in the real map and wall-jumps off it", () => {
+    // Minimal slice of the real map: the right platform's left face (solid
+    // rows 12-13, x=13..21) is all this test needs.
+    const grid = buildTileGrid(
+      layer(
+        30,
+        17,
+        new Array<number>(30 * 17).fill(0).map((_, i) => {
+          const x = i % 30;
+          const y = Math.floor(i / 30);
+          if ((y === 12 || y === 13) && x >= 13 && x <= 21) return TILE_SOLID;
+          return 0;
+        }),
+      ),
+    );
+    const state = createPlayerState(config);
+    // Mid-air, flush against the right platform's left face (x=13·16=208,
+    // solid rows 12-13: y 192..224).
+    state.x = 13 * TILE_SIZE - config.width / 2;
+    state.y = 205;
+    let grabbed = false;
+    for (let i = 0; i < 20; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: true },
+        grid,
+        STEP,
+        config,
+      );
+      if (state.clinging) {
+        grabbed = true;
+        break;
+      }
+    }
+    expect(grabbed).toBe(true);
+    // Wall jump: away = left (back toward the left platform), and up.
+    stepPlayer(state, { left: false, right: false, jump: true }, grid, STEP, config);
+    stepPlayer(state, noInput, grid, STEP, config);
+    expect(state.clinging).toBe(false);
+    expect(state.vx).toBeLessThan(0);
+    expect(state.vy).toBeLessThan(0);
   });
 });
 

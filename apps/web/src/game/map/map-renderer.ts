@@ -1,7 +1,9 @@
 /**
  * Phaser side of the Tiled map: registers each tileset as a texture (one
- * frame per tile), then renders the map as separate `ROOM_WIDTH`×`ROOM_HEIGHT`
- * rooms. Anything that would overflow a room's bounds is cropped away.
+ * frame per tile) and each image layer (background) as a full-image texture,
+ * then renders the map as separate `ROOM_WIDTH`×`ROOM_HEIGHT` rooms. Image
+ * layers draw first (behind the tiles), tiled per `repeatx`/`repeaty`;
+ * anything that would overflow a room's bounds is cropped away.
  *
  * Rooms are laid out in a grid (row-major). Each room is scaled to exactly
  * the canvas width (`scale = canvasWidth / roomWidth` ≈ 1280/480 ≈ 2.667),
@@ -20,6 +22,7 @@ import {
   ROOM_WIDTH,
   roomGridSize,
   tileFrameForGid,
+  type TiledImageLayer,
   type TiledMap,
   type TiledTileset,
 } from "./tiled-map";
@@ -66,9 +69,103 @@ function registerTilesetTexture(scene: Phaser.Scene, tileset: TiledTileset): str
 }
 
 /**
- * Renders one room: every tile whose rect intersects the room's
- * `roomWidth`×`roomHeight` window. Tiles that straddle a room edge are
- * cropped to the visible part; tiles fully outside are skipped.
+ * Registers an image layer's image as a Phaser texture (the whole image is
+ * a single frame), keyed by layer name — Tiled layer names are unique.
+ */
+function registerImageTexture(
+  scene: Phaser.Scene,
+  layer: TiledImageLayer,
+): string {
+  const key = `image:${layer.name}`;
+  if (scene.textures.exists(key)) return key;
+
+  const texture = scene.textures.addImage(key, layer.image);
+  if (!texture) {
+    throw new Error(`Could not register image layer texture "${key}"`);
+  }
+  return key;
+}
+
+/**
+ * Placements of a (possibly repeating) image on one axis that intersect
+ * `[from, to)`: a single placement at `start` when `repeat` is false, else
+ * `start += size` stepping from the first placement at-or-before `from`.
+ */
+function repeatPositions(
+  start: number,
+  size: number,
+  from: number,
+  to: number,
+  repeat: boolean,
+): number[] {
+  if (!repeat) return [start];
+  if (size <= 0) return [];
+  const positions: number[] = [];
+  const first = start + Math.floor((from - start) / size) * size;
+  for (let position = first; position < to; position += size) {
+    positions.push(position);
+  }
+  return positions;
+}
+
+/**
+ * Renders one image layer into a room: every image placement (honoring
+ * `repeatx`/`repeaty`) that intersects the room window, cropped to the
+ * visible part exactly like tiles are. Image layers are backgrounds, so
+ * they go in behind the tile layers.
+ */
+function renderImageLayer(
+  scene: Phaser.Scene,
+  room: Phaser.GameObjects.Container,
+  layer: TiledImageLayer,
+  originX: number,
+  originY: number,
+  roomWidth: number,
+  roomHeight: number,
+): void {
+  const key = registerImageTexture(scene, layer);
+
+  for (const x of repeatPositions(
+    layer.x,
+    layer.width,
+    originX,
+    originX + roomWidth,
+    layer.repeatX,
+  )) {
+    for (const y of repeatPositions(
+      layer.y,
+      layer.height,
+      originY,
+      originY + roomHeight,
+      layer.repeatY,
+    )) {
+      const left = Math.max(x, originX);
+      const top = Math.max(y, originY);
+      const right = Math.min(x + layer.width, originX + roomWidth);
+      const bottom = Math.min(y + layer.height, originY + roomHeight);
+      if (right <= left || bottom <= top) continue;
+
+      const image = scene.add.image(left - originX, top - originY, key);
+      image.setOrigin(0, 0);
+
+      // Clip image placements that poke past the room boundary.
+      if (
+        right - left !== layer.width ||
+        bottom - top !== layer.height
+      ) {
+        image.setCrop(left - x, top - y, right - left, bottom - top);
+      }
+
+      room.add(image);
+    }
+  }
+}
+
+/**
+ * Renders one room: image layers (backgrounds) first, then every tile whose
+ * rect intersects the room's `roomWidth`×`roomHeight` window. Tiles that
+ * straddle a room edge are cropped to the visible part; tiles fully outside
+ * are skipped.
  */
 function renderRoom(
   scene: Phaser.Scene,
@@ -83,6 +180,11 @@ function renderRoom(
 
   const originX = col * roomWidth;
   const originY = row * roomHeight;
+
+  for (const layer of map.imageLayers) {
+    if (!layer.visible) continue;
+    renderImageLayer(scene, room, layer, originX, originY, roomWidth, roomHeight);
+  }
 
   for (const layer of map.layers) {
     if (!layer.visible) continue;

@@ -164,7 +164,7 @@ see `discoveries/agents.md` for the format and conventions.
 
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics.ts` (tile
-collision: 57 solid, 110/109 slopes) and renders its own prediction with no
+collision: 57 solid, 110/109/262 slopes) and renders its own prediction with no
 server round-trip. The Colyseus room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
 abnormal speed / buried-in-geometry via `validatePositionReport`) and
@@ -173,8 +173,13 @@ broadcasts the last accepted report. A failing report **stops the player**
 violations count toward a kick. `PlayerInfo` position/velocity fields come
 from accepted client reports only (velocity clamped to the physics max) — a
 raw client-supplied position is never trusted, and after a stop the player
-only moves again once a report passes validation. Details live in the
-`shared`, `server`, and `web` workspace guides. **Debug** (`NEXT_PUBLIC_DEBUG`,
+only moves again once a report passes validation. Wall cling (a grab):
+airborne next to a wall, moving into it, pressing jump grabs the wall and
+hangs the player (no gravity) until jump again launches them up+away
+(wall jump), they press away, or they land — the shared stepPlayer state
+machine + `clinging` in the wire reports/broadcast drive it deterministically
+on both sides. Details live in the `shared`, `server`, and `web` workspace
+guides. **Debug** (`NEXT_PUBLIC_DEBUG`,
 off unless "1"/"true"): the collision-debug overlay renders, and R teleports
 the player back to its checkpoint (starting at the spawn point) through a
 `PLAYER_CHECKPOINT_MESSAGE` the room always accepts (its target is the

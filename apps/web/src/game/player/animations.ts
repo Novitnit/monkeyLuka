@@ -5,6 +5,7 @@
  *
  * Sheet layouts (all cells 16×16, matching the player's physics body):
  * - idle: 16×16 — a single frame.
+ * - cling: 16×16 — a single frame (wall grab).
  * - jog:  48×48 — 3×3 cell grid, 8 frames used (row-major, last cell empty).
  * - jump: 32×48 — 2×3 cell grid, 5 frames used (row-major, last cell empty).
  */
@@ -13,11 +14,13 @@ import type Phaser from "phaser";
 
 /** Texture keys for the sheets, loaded as images by the jungle scene. */
 export const PLAYER_IDLE_TEXTURE = "player-idle";
+export const PLAYER_CLING_TEXTURE = "player-cling";
 export const PLAYER_JOG_TEXTURE = "player-jog";
 export const PLAYER_JUMP_TEXTURE = "player-jump";
 
 /** Animation keys registered by `registerPlayerAnimations`. */
 export const PLAYER_IDLE_ANIM = "player-anim:idle";
+export const PLAYER_CLING_ANIM = "player-anim:cling";
 export const PLAYER_JOG_ANIM = "player-anim:jog";
 export const PLAYER_JUMP_ANIM = "player-anim:jump";
 
@@ -78,6 +81,12 @@ export function registerPlayerAnimations(scene: Phaser.Scene): void {
     repeat: -1,
   });
   anims.create({
+    key: PLAYER_CLING_ANIM,
+    frames: [{ key: PLAYER_CLING_TEXTURE, frame: 0 }],
+    frameRate: 6,
+    repeat: 0,
+  });
+  anims.create({
     key: PLAYER_JOG_ANIM,
     frames: anims.generateFrameNumbers(PLAYER_JOG_TEXTURE, {
       start: 0,
@@ -99,21 +108,24 @@ export function registerPlayerAnimations(scene: Phaser.Scene): void {
 
 /**
  * Points a player sprite at the animation matching its motion state:
- * airborne → jump, grounded and moving → jog, grounded and still → idle.
- * Only restarts when the animation actually changes, so the one-shot jump
- * arc plays through and the looping/jog animations don't restart every
- * frame.
+ * clinging → cling, airborne → jump, grounded and moving → jog, grounded
+ * and still → idle. Only restarts when the animation actually changes, so
+ * the one-shot jump arc plays through and the looping/jog animations don't
+ * restart every frame.
  */
 export function setPlayerAnimation(
   sprite: Phaser.GameObjects.Sprite,
   grounded: boolean,
   speedX: number,
+  clinging: boolean,
 ): void {
-  const key = !grounded
-    ? PLAYER_JUMP_ANIM
-    : Math.abs(speedX) > JOG_SPEED_THRESHOLD
-      ? PLAYER_JOG_ANIM
-      : PLAYER_IDLE_ANIM;
+  const key = clinging
+    ? PLAYER_CLING_ANIM
+    : !grounded
+      ? PLAYER_JUMP_ANIM
+      : Math.abs(speedX) > JOG_SPEED_THRESHOLD
+        ? PLAYER_JOG_ANIM
+        : PLAYER_IDLE_ANIM;
   if (sprite.anims.currentAnim?.key !== key) {
     sprite.play(key);
   }

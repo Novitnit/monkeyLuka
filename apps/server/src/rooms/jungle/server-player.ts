@@ -25,5 +25,6 @@ export interface BroadcastState {
   vx: number;
   vy: number;
   grounded: boolean;
+  clinging: boolean;
   facing: number;
 }

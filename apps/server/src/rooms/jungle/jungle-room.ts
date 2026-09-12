@@ -82,6 +82,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
         vx: spawn.vx,
         vy: spawn.vy,
         grounded: spawn.grounded,
+        clinging: false,
         facing: spawn.facing,
       },
       lastValidAt: 0,
@@ -95,6 +96,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       vx: spawn.vx,
       vy: spawn.vy,
       grounded: spawn.grounded,
+      clinging: false,
       facing: spawn.facing,
     });
     this.state.players.set(client.sessionId, info);
@@ -172,6 +174,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       vx: spawn.vx,
       vy: spawn.vy,
       grounded: spawn.grounded,
+      clinging: false,
       facing: spawn.facing,
     };
     // Re-baseline the speed clock so the next report isn't compared against
@@ -184,6 +187,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       writeIfChanged(info, "vx", player.lastValid.vx);
       writeIfChanged(info, "vy", player.lastValid.vy);
       writeIfChanged(info, "grounded", player.lastValid.grounded);
+      writeIfChanged(info, "clinging", player.lastValid.clinging);
       writeIfChanged(info, "facing", player.lastValid.facing);
     }
   }
@@ -273,10 +277,18 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       y: payload.py,
       // Advisory velocity is clamped to the physics max so forged values
       // can't leak absurd numbers into the broadcast (position is the only
-      // gameplay-truth channel; velocity is display-only).
-      vx: clampVelocity(payload.vx, DEFAULT_PLAYER_PHYSICS.runSpeed),
+      // gameplay-truth channel; velocity is display-only). Wall jumps launch
+      // faster than runSpeed, so the horizontal clamp follows the ceiling.
+      vx: clampVelocity(
+        payload.vx,
+        Math.max(
+          DEFAULT_PLAYER_PHYSICS.runSpeed,
+          DEFAULT_PLAYER_PHYSICS.wallJumpSpeed,
+        ),
+      ),
       vy: clampVelocity(payload.vy, DEFAULT_PLAYER_PHYSICS.maxFallSpeed),
       grounded: payload.grounded,
+      clinging: payload.clinging,
       facing: payload.facing,
     };
     player.lastValidAt = now;
@@ -290,6 +302,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       writeIfChanged(info, "vx", player.lastValid.vx);
       writeIfChanged(info, "vy", player.lastValid.vy);
       writeIfChanged(info, "grounded", player.lastValid.grounded);
+      writeIfChanged(info, "clinging", player.lastValid.clinging);
       writeIfChanged(info, "facing", player.lastValid.facing);
     }
   }

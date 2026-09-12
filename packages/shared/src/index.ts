@@ -28,8 +28,9 @@ export const MAX_PLAYER_NAME_LENGTH = 24;
  * last client movement report that passed validation (velocity clamped to
  * the physics max). The client renders this state and reconciles its local
  * prediction against it; a report that fails validation leaves the player
- * stopped at the previously accepted position. See `physics.ts` for the
- * shared simulation and its validation rules.
+ * stopped at the previously accepted position. `clinging` mirrors the wall-
+ * grab state so remote sprites play the cling animation. See `physics.ts`
+ * for the shared simulation and its validation rules.
  */
 export const PlayerInfo = schema({
   name: t.string(),
@@ -38,6 +39,7 @@ export const PlayerInfo = schema({
   vx: t.number(),
   vy: t.number(),
   grounded: t.boolean(),
+  clinging: t.boolean(),
   facing: t.number(),
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;

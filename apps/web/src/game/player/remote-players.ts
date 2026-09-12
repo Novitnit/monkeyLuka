@@ -48,7 +48,7 @@ export function syncRemotePlayers(
     view.targetY = info.y;
     view.sprite.setFlipX(info.facing < 0);
     // Remote animation state comes straight from the authoritative broadcast.
-    setPlayerAnimation(view.sprite, info.grounded, info.vx);
+    setPlayerAnimation(view.sprite, info.grounded, info.vx, info.clinging);
   }
 
   // Remove sprites whose players left the room.

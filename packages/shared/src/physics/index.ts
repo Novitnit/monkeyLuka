@@ -9,8 +9,10 @@
  * are re-exported here so existing consumers (`@monkeyluka/shared`,
  * `./physics`) keep working unchanged:
  * - `tiles.ts`      – tile constants, layer → `SolidGrid`, world bounds
- * - `collision.ts`  – point/AABB collision tests + penetration helpers
- * - `player.ts`     – `stepPlayer` simulation, config, spawn, speed ceiling
+ * - `collision.ts`  – point/AABB collision tests + penetration helpers +
+ *                     the `wallBeside` wall-adjacency probe
+ * - `player.ts`     – `stepPlayer` simulation (coyote/buffered jump + wall
+ *                     cling), config, spawn, speed ceiling
  * - `validation.ts` – `player:input` wire contract + `validatePositionReport`
  *
  * Coordinate space is map pixel space, origin top-left, y growing down,
@@ -24,6 +26,8 @@
  *         inside the tile with local coords (dx, dy) is solid when dy ≤ dx.
  * - 109 – diagonal tile, solid on its top-right half (line TR → BL); a point
  *         is solid when dx + dy ≤ 16 (the half above the descending line).
+ * - 262 – diagonal tile, solid on its bottom-right half (the mirror of 109,
+ *         same TR → BL line); a point is solid when dx + dy ≥ 16.
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */

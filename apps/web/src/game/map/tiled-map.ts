@@ -67,6 +67,28 @@ export interface TiledTileLayer {
   gids: number[];
 }
 
+/**
+ * An image layer (Tiled `imagelayer`), e.g. the 480×272 `background` image
+ * behind the tile layers. `image` is preloaded like tileset images;
+ * `repeatX`/`repeatY` mirror Tiled's `repeatx`/`repeaty` flags and the
+ * renderer tiles the image across rooms accordingly.
+ */
+export interface TiledImageLayer {
+  name: string;
+  visible: boolean;
+  /** World position of the image's top-left corner, px. */
+  x: number;
+  y: number;
+  /** URL the browser loaded and cached. */
+  imageUrl: string;
+  /** The fully-loaded image, ready for `textures.addImage`. */
+  image: HTMLImageElement;
+  width: number;
+  height: number;
+  repeatX: boolean;
+  repeatY: boolean;
+}
+
 export interface TiledMap {
   /** Map size in tiles. */
   width: number;
@@ -74,6 +96,8 @@ export interface TiledMap {
   tileWidth: number;
   tileHeight: number;
   layers: TiledTileLayer[];
+  /** `imagelayer`s in file order, rendered behind the tile layers. */
+  imageLayers: TiledImageLayer[];
   tilesets: TiledTileset[];
 }
 
@@ -111,6 +135,12 @@ export interface RawTiledMap {
     width?: number;
     height?: number;
     data?: number[] | string;
+    // `imagelayer` fields.
+    x?: number;
+    y?: number;
+    image?: string;
+    repeatx?: boolean;
+    repeaty?: boolean;
   }>;
   tilesets?: Array<{
     firstgid?: number;
@@ -185,7 +215,34 @@ export async function resolveTiledMap(
   }
 
   const layers: TiledTileLayer[] = [];
+  const imageLayers: TiledImageLayer[] = [];
   for (const layer of raw.layers ?? []) {
+    if (layer.type === "imagelayer") {
+      if (!layer.image) {
+        throw new Error(
+          `Image layer "${layer.name ?? "?"}" has no image URL`,
+        );
+      }
+      // Resolve like tileset images, falling back to the bare filename.
+      const imageUrl = await pickImageUrl([
+        joinUrl(baseUrl, layer.image),
+        joinUrl(baseUrl, basename(layer.image)),
+      ]);
+      const el = await loadImage(imageUrl);
+      imageLayers.push({
+        name: layer.name ?? "imagelayer",
+        visible: layer.visible !== false,
+        x: layer.x ?? 0,
+        y: layer.y ?? 0,
+        imageUrl,
+        image: el,
+        width: el.naturalWidth,
+        height: el.naturalHeight,
+        repeatX: layer.repeatx === true,
+        repeatY: layer.repeaty === true,
+      });
+      continue;
+    }
     if (layer.type !== "tilelayer") continue;
     const width = layer.width ?? raw.width;
     const height = layer.height ?? raw.height;
@@ -210,6 +267,7 @@ export async function resolveTiledMap(
     tileWidth: raw.tilewidth,
     tileHeight: raw.tileheight,
     layers,
+    imageLayers,
     tilesets,
   };
 }

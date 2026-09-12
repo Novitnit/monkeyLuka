@@ -31,16 +31,26 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   screen switches to the fullscreen Phaser mount (which keeps only its own
   Exit button).
 - The jungle client is split for focus: `src/game/jungle-game.ts` is the thin
-  boot (dynamic `await import("phaser")` + game config) and the whole scene
-  lives in `src/game/jungle-scene.ts` (loads + renders the Tiled map into
-  room containers, spawns the player via `createPlayer()` from
-  `src/game/player/player.ts`, drives input, ~20 Hz reports and snapshot
-  reconciliation). Remote players are rendered by
+  boot (dynamic `await import("phaser")` + game config) and the scene lives
+  in `src/game/scene/` — `scene/index.ts` builds the scene config by wiring
+  `create.ts` (loads + renders the Tiled map into room containers, spawns
+  the player via `createPlayer()` from `src/game/player/player.ts`, keyboard)
+  and `update.ts` (input, ~20 Hz reports, snapshot reconciliation,
+  room-locked camera, remote easing) over the mutable world in `state.ts`,
+  with `constants.ts` (asset locations, report cadence) and `debug.ts`
+  (NEXT_PUBLIC_DEBUG gates + window handles). Remote players are rendered by
   `src/game/player/remote-players.ts` (one sprite per other session, eased
-  toward the server position, animated from the `idle`/`jog`/`jump` sprite
-  sheets in `Assets/player/sheets`, served via the `public/player` symlink;
-  spawn **96,176** inside the first room). The sprite is a child of the room
-  container so it inherits room scale/position.
+  toward the server position, animated from the `idle`/`cling`/`jog`/`jump`
+  sprite sheets in `Assets/player/sheets`, served via the `public/player`
+  symlink;
+  spawn **96,176** inside the first room). Local and remote sprites are
+  children of a scene-level **player layer** — a transform twin of room 0
+  (same position/scale) created after all the room containers — so they
+  draw on top of every room's background/tiles while keeping room-local
+  coordinates. (Parenting them to `rooms[0]` instead would hide the player
+  under the next room's art: Phaser renders a container's children at the
+  container's display-list slot, and each room after the first is added
+  later and drawn above it.)
   Player animations are registered by `src/game/player/animations.ts`
   (16×16 cells: `jog` uses 8 of a 3×3 sheet, `jump` 5 of a 2×3 sheet,
   row-major; the jump arc plays once, the rest loop) and driven from state —
@@ -52,9 +62,16 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `src/game/map/tileset-loader.ts`; the Phaser rendering in
   `src/game/map/map-renderer.ts` (rooms are `ROOM_WIDTH`×`ROOM_HEIGHT` —
   480×272, exactly the designed rooms, cropped at room
-  edges; `jungle-scene.ts` passes `gap: 0` so room columns abut exactly and
+  edges; `scene/create.ts` passes `gap: 0` so room columns abut exactly and
   the map renders as one continuous world — tile, physics, and camera
-  coordinates agree across the room seams). The scene camera is room-locked:
+  coordinates agree across the room seams). Image layers (`imagelayer` in
+  `main.json`, e.g. the 480×272 `background`) are resolved by
+  `resolveTiledMap` into `TiledMap.imageLayers` and rendered by the
+  map-renderer first (behind the tiles): the image is preloaded + registered
+  as a Phaser texture per layer, then drawn once per room, tiled per
+  `repeatx`/`repeaty` and cropped to the room bounds exactly like tiles —
+  the background is room-sized at (0,0) with `repeatx`, so it lands
+  seam-aligned in every room. The scene camera is room-locked:
   every frame it snaps to the whole `ROOM_WIDTH`×`ROOM_HEIGHT` room the
   local monkey is in (never a smooth follow), so only the current room is
   ever visible and neighbors stay off-screen until the player crosses a
@@ -67,15 +84,20 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   over the 720px canvas, so the map's top/bottom rows crop ~2.67px each at
   the world's vertical edges — see
   `discoveries/room-camera-shows-adjacent-room-seam.md`.
+  The game config (`src/game/jungle-game.ts`) sets `pixelArt: true` —
+  nearest-neighbor filtering + rounded pixels: the default linear filtering
+  made the tightly-packed 16px atlas cells (player sheets, tilesets) bleed
+  ~1px of the adjacent frame at the ~2.667x magnification, and sub-pixel
+  tile placement showed seams between neighbors.
   `tsconfig.json` excludes `public` so the symlinked assets aren't
   typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
   like `tiled-map.ts`)
-  extracts collision geometry from the `layer1` tiles — 57/109/110 tiles
+  extracts collision geometry from the `layer1` tiles — 57/109/110/262 tiles
   form one solid block wherever adjacent (a 57 side bordering a slope emits
   no straight edge; the slope line takes over that boundary). Blocks are
   traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
-  for vertical; `side` tells which side the solid is on) plus the 109/110
+  for vertical; `side` tells which side the solid is on) plus the 109/110/262
   diagonal lines. **Collision ignores a layer's `visible` flag** — the
   hidden `layer1` is still parsed by `resolveTiledMap` and used; the renderer
   (`map-renderer.ts`) is what skips `visible: false` layers. The room grid
@@ -92,15 +114,20 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `@monkeyluka/shared`; the grid comes from building `layer1` with
   `buildTileGrid` — the same gids the server validates against, so prediction
   and collision share geometry). Movement is **client-simulated**: the scene
-  (`jungle-scene.ts`) reads arrows/WASD + Space/Up, predicts the local monkey
+  (`scene/update.ts`) reads arrows/WASD + Space/Up, predicts the local monkey
   every frame, and renders that prediction directly — no server round-trip
   before movement appears. It streams `PLAYER_INPUT_MESSAGE` at ~20 Hz (the
-  predicted `px/py/vx/vy/grounded/facing`), and reconciles
+  predicted `px/py/vx/vy/grounded/clinging/facing`), and reconciles
   against the broadcast `PlayerInfo` snapshot (snap beyond 32 px, else a
   clamped lean-in) so a report the server rejected visibly stops the monkey;
   other players render directly from server positions (eased). The sprite is
-  flipped to `facing`; `render.rooms[0]` contains both local and remote
-  sprites, so coordinates are room-local. **Debug only** (`NEXT_PUBLIC_DEBUG`):
+  flipped to `facing`; both local and remote sprites live in the scene-level
+  player layer (above every room's art) so coordinates are room-local and
+  the player stays visible in rooms after the first. While `clinging` the
+  shared physics hangs the monkey on the wall and the sprite plays the
+  `cling` frame (`Assets/player/sheets/cling.png`), flipped to face away
+  from the wall (the mirror of `clingDir` on the X-axis); remote cling comes
+  from the broadcast `clinging` field. **Debug only** (`NEXT_PUBLIC_DEBUG`):
   R teleports the local monkey back to its checkpoint — a scene-level
   `checkpoint` starting at `PLAYER_SPAWN` (update it there when real
   checkpoints land) — via `player.teleportTo()` plus a
@@ -132,7 +159,7 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `discoveries/jungle-resume-leaves-room-under-strictmode.md`.
   Mid-session network blips are auto-reconnected by the Colyseus SDK's own
   retry loop (`Room.reconnection`); while the socket is down
-  (`!room.connection.isOpen`) `jungle-scene.ts` **freezes local simulation**
+  (`!room.connection.isOpen`) `scene/update.ts` **freezes local simulation**
   so no movement reports pile up (a burst of buffered reports flushing on
   reconnect has near-zero wall-clock dt and looks like a speed hack). On a
   fresh mount the local player is seeded from its own broadcast position

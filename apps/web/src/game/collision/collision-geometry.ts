@@ -14,6 +14,7 @@
  *         (horizontal edges are "floor", vertical edges are "wall").
  * - 110 – diagonal tile, solid on its top-left half (line TL → BR).
  * - 109 – diagonal tile, solid on its top-right half (line TR → BL).
+ * - 262 – diagonal tile, solid on its bottom-right half (line TR → BL).
  *
  * A 57 side touching a 109/110 tile emits no straight edge — the slope line
  * takes over that part of the block boundary, so the two belong to the same
@@ -22,6 +23,7 @@
 
 import {
   COLLISION_LAYER_NAME,
+  TILE_SLOPE_BR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
@@ -34,6 +36,8 @@ export const WALL_TILE = TILE_SOLID;
 export const DIAGONAL_TL_TO_BR = TILE_SLOPE_TL_BR;
 /** Diagonal tile, solid on its top-right half (line top-right → bottom-left). */
 export const DIAGONAL_TR_TO_BL = TILE_SLOPE_TR_BL;
+/** Diagonal tile, solid on its bottom-right half (line top-right → bottom-left). */
+export const DIAGONAL_TR_TO_BL_BOTTOM = TILE_SLOPE_BR;
 
 /** Default tile layer holding the collision geometry. */
 export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
@@ -67,7 +71,7 @@ export interface DiagonalSegment {
   x2: number;
   y2: number;
   /** Which half of the tile is solid, relative to the line. */
-  solidSide: "top-left" | "top-right";
+  solidSide: "top-left" | "top-right" | "bottom-right";
 }
 
 export interface CollisionGeometry {
@@ -105,7 +109,8 @@ export function buildCollisionGeometry(
     return (
       gid === WALL_TILE ||
       gid === DIAGONAL_TL_TO_BR ||
-      gid === DIAGONAL_TR_TO_BL
+      gid === DIAGONAL_TR_TO_BL ||
+      gid === DIAGONAL_TR_TO_BL_BOTTOM
     );
   };
 
@@ -154,6 +159,14 @@ export function buildCollisionGeometry(
           x2: left,
           y2: top + th,
           solidSide: "top-right",
+        });
+      } else if (gid === DIAGONAL_TR_TO_BL_BOTTOM) {
+        diagonals.push({
+          x1: left + tw,
+          y1: top,
+          x2: left,
+          y2: top + th,
+          solidSide: "bottom-right",
         });
       }
     }
