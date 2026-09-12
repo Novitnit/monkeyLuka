@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   PLAYER_SPAWN,
+  TILE_SLOPE_BR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
@@ -21,21 +22,28 @@ const raw = (await Bun.file(
 describe("jungle-map loader", () => {
   test("loads the real map's collision layer", () => {
     const { grid, width, height } = parseJungleMap(raw);
-    expect(grid.width).toBe(30);
+    expect(grid.width).toBe(60);
     expect(grid.height).toBe(17);
-    expect(width).toBe(30 * 16);
+    expect(width).toBe(60 * 16);
     expect(height).toBe(17 * 16);
 
-    // The real map's layer1 has 77 solid tiles + 4 slopes; its other gid
-    // (464, decoration) must NOT become collision.
+    // Snapshot of the real map's layer1 (computed from main.json): 109
+    // solid tiles and 8 slopes (5×110, 2×109, 1×262); the decoration gid
+    // (464) must NOT become collision.
     let solid = 0;
     let slopes = 0;
     for (const kind of grid.kinds) {
       if (kind === TILE_SOLID) solid += 1;
-      if (kind === TILE_SLOPE_TL_BR || kind === TILE_SLOPE_TR_BL) slopes += 1;
+      if (
+        kind === TILE_SLOPE_TL_BR ||
+        kind === TILE_SLOPE_TR_BL ||
+        kind === TILE_SLOPE_BR
+      ) {
+        slopes += 1;
+      }
     }
-    expect(solid).toBe(77);
-    expect(slopes).toBe(4);
+    expect(solid).toBe(109);
+    expect(slopes).toBe(8);
   });
 
   test("spawn point floats above the left platform and has open air below", () => {

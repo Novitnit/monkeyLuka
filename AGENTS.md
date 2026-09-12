@@ -165,7 +165,11 @@ see `discoveries/agents.md` for the format and conventions.
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics.ts` (tile
 collision: 57 solid, 110/109/262 slopes) and renders its own prediction with no
-server round-trip. The Colyseus room does **no simulation** — it only
+server round-trip. Slope contacts: 110/109 landings rest on the flat top lip
+(never hoist an under-runner walking below a chamfer); 262 climbing rides the
+ramp's surface at the box's leading edge — both documented in
+`discoveries/jungle-slope-climb-buries-player-kicks-teleport.md`. The Colyseus
+room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
 abnormal speed / buried-in-geometry via `validatePositionReport`) and
 broadcasts the last accepted report. A failing report **stops the player**

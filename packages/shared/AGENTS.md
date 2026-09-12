@@ -77,6 +77,17 @@ or Colyseus imports — so it can also be unit-tested directly.
   names from these so rendering and physics can't drift.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
   queries; `gridPixelSize` for world bounds.
+- Slope contact rules (see
+  `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` for the
+  full diagnosis): 110/109 are corner brackets whose top edge is solid across
+  the cell — a box landing on one rests on the flat lip (bottom = cell top),
+  and the lip only fires for a box genuinely falling from above; a box
+  brushing the cell from below (overhang under-runner) must not be hoisted.
+  262 is the mirror — the solid hangs below the TR→BL line, so its landing
+  surface IS the line, sampled at the box's shallowest extent (rightmost
+  side) so a right-moving climber rides the ramp with its bottom-right
+  corner and never embeds (sampling the deepest point buried the box and
+  tripped the anti-cheat's buried-in-geometry check → teleport kick).
 - `createPlayerState()` + `stepPlayer(state, input, grid, dt, config)` — the
   deterministic player step (run accel, gravity, coyote/buffered jump, wall
   cling: airborne + moving into a wall + jump press grabs the wall — the

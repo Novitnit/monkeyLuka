@@ -5,6 +5,8 @@
  * simulation honest: the server's anti-cheat is only as good as this math.
  */
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
@@ -265,7 +267,9 @@ describe("jumping", () => {
         ...new Array<number>(8 * 12).fill(0),
       ]),
     );
-    const state = settle(grid, 2 * TILE_SIZE, 2 * TILE_SIZE);
+    // Start near the ledge's right edge (3*16=48; the ledge ends at 4*16=64)
+    // so the 30-frame walk runs off it before the loop guard sees a hang.
+    const state = settle(grid, 3 * TILE_SIZE, 2 * TILE_SIZE);
     // Walk right off the ledge into the air…
     for (let i = 0; i < 30 && state.grounded; i++) {
       stepPlayer(state, { left: false, right: true, jump: false }, grid, STEP, config);
@@ -312,16 +316,17 @@ describe("jumping", () => {
 });
 
 describe("slopes", () => {
-  test("lands exactly on a 110 (TL→BR) slope surface", () => {
+  test("lands on the flat lip of a 110 (TL→BR) slope, not the hypotenuse", () => {
     const grid = buildTileGrid(layer(4, 4, [
       0, 0, 0, 0,
       0, 0, 0, 0,
       0, 0, 0, 0,
       TILE_SOLID, TILE_SOLID, TILE_SLOPE_TL_BR, 0,
     ]));
-    // A box on a 45° slope rests on its downhill edge: bottom-right corner
-    // crosses the diagonal at dx = (x + hw) - tileLeft = 13, so the contact
-    // is at y = 48 + 13 = 61 and the center settles at 61 − hh = 54.
+    // 110's solid is the bracket ABOVE the TL→BR line, whose top edge is
+    // solid across the whole cell — a falling box contacts that flat lip
+    // before the hypotenuse and rests on it like a solid tile's top
+    // (bottom = cell top, center = 3*16 − 7 = 41).
     const state = createPlayerState(config);
     state.x = 2.5 * TILE_SIZE;
     state.y = TILE_SIZE;
@@ -330,18 +335,18 @@ describe("slopes", () => {
       if (state.grounded) break;
     }
     expect(state.grounded).toBe(true);
-    expect(state.y).toBeCloseTo(3 * TILE_SIZE + 13 - config.height / 2, 3);
+    expect(state.y).toBeCloseTo(3 * TILE_SIZE - config.height / 2, 3);
   });
 
-  test("lands exactly on a 109 (TR→BL) slope surface", () => {
+  test("lands on the flat lip of a 109 (TR→BL) slope, not the hypotenuse", () => {
     const grid = buildTileGrid(layer(4, 4, [
       0, 0, 0, 0,
       0, 0, 0, 0,
       0, 0, 0, 0,
       0, TILE_SLOPE_TR_BL, TILE_SOLID, TILE_SOLID,
     ]));
-    // Mirror slope: rests on the downhill (left) edge at dx = 3 → contact
-    // y = 48 + (16 − 3) = 61 → center 54.
+    // Same flat-lip landing as 110: 109's solid is also the bracket above
+    // the line with a fully-solid top edge → bottom = cell top.
     const state = createPlayerState(config);
     state.x = 1.5 * TILE_SIZE;
     state.y = TILE_SIZE;
@@ -350,20 +355,21 @@ describe("slopes", () => {
       if (state.grounded) break;
     }
     expect(state.grounded).toBe(true);
-    expect(state.y).toBeCloseTo(3 * TILE_SIZE + 13 - config.height / 2, 3);
+    expect(state.y).toBeCloseTo(3 * TILE_SIZE - config.height / 2, 3);
   });
 
-  test("lands exactly on a 262 (TR→BL, bottom-right) wedge surface", () => {
+  test("lands on the 262 (TR→BL, bottom-right) wedge surface", () => {
     const grid = buildTileGrid(layer(4, 4, [
       0, 0, 0, 0,
       0, 0, 0, 0,
       0, 0, 0, 0,
       TILE_SOLID, TILE_SOLID, TILE_SLOPE_BR, 0,
     ]));
-    // The wedge's solid bottom-right half shares the TR→BL line with 109,
-    // so the surface math is identical: the box's left edge crosses it at
-    // dx = 2.5·16 − 6.5 − 32 = 1.5 → contact y = 48 + (16 − 1.5) = 62.5,
-    // center 62.5 − 7 = 55.5.
+    // 262's solid hangs BELOW the line, so its landing surface IS the line.
+    // A resting box binds at the line's shallowest point under its span —
+    // its bottom-right corner: right edge at 2.5*16+6.5 = 46.5 → edgeMax
+    // = 14.5 → bottom = 48 + (16 − 14.5) = 49.5 → center 42.5. (Sampling
+    // the deepest point instead left the box 13px buried in the wedge.)
     const state = createPlayerState(config);
     state.x = 2.5 * TILE_SIZE;
     state.y = TILE_SIZE;
@@ -372,33 +378,41 @@ describe("slopes", () => {
       if (state.grounded) break;
     }
     expect(state.grounded).toBe(true);
-    expect(state.y).toBeCloseTo(3 * TILE_SIZE + (TILE_SIZE - 1.5) - config.height / 2, 3);
+    expect(state.y).toBeCloseTo(
+      3 * TILE_SIZE + (TILE_SIZE - 14.5) - config.height / 2,
+      3,
+    );
   });
 });
 
 describe("the real jungle map", () => {
-  // Reproduces Assets/map/main.json's collision layer (30×17 tiles).
+  // Loads the actual Assets/map/main.json collision layer (60×17 tiles) —
+  // the tests exercise the game's real geometry, not an approximation.
   function jungleGrid(): SolidGrid {
-    const width = 30;
-    const height = 17;
-    const gids = new Array<number>(width * height).fill(0);
-    const set = (x: number, y: number, gid: number) => {
-      gids[y * width + x] = gid;
+    const raw = JSON.parse(
+      readFileSync(
+        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
+        "utf8",
+      ),
+    ) as {
+      layers: Array<{
+        name: string;
+        width: number;
+        height: number;
+        data: number[] | string;
+      }>;
     };
-    // Left platform: top at tile row 13 (y=208)…
-    for (let y = 13; y <= 14; y++) for (let x = 3; x <= 10; x++) set(x, y, TILE_SOLID);
-    set(3, 15, TILE_SLOPE_TL_BR);
-    for (let x = 4; x <= 9; x++) set(x, 15, TILE_SOLID);
-    set(10, 15, TILE_SLOPE_TR_BL);
-    for (let x = 4; x <= 9; x++) set(x, 16, TILE_SOLID);
-    // Right platform: top at tile row 12 (y=192).
-    for (let y = 12; y <= 13; y++) for (let x = 13; x <= 21; x++) set(x, y, TILE_SOLID);
-    set(13, 14, TILE_SLOPE_TL_BR);
-    for (let x = 14; x <= 20; x++) set(x, 14, TILE_SOLID);
-    set(21, 14, TILE_SLOPE_TR_BL);
-    for (let x = 14; x <= 20; x++) set(x, 15, TILE_SOLID);
-    for (let x = 14; x <= 20; x++) set(x, 16, TILE_SOLID);
-    return buildTileGrid(layer(width, height, gids));
+    const layer1 = raw.layers.find((l) => l.name === "layer1");
+    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
+    const gids =
+      typeof layer1.data === "string"
+        ? layer1.data.split(",").map((v) => Number(v.trim()))
+        : layer1.data;
+    return buildTileGrid({
+      width: layer1.width,
+      height: layer1.height,
+      gids,
+    });
   }
 
   test("spawns at PLAYER_SPAWN and falls onto the left platform", () => {
@@ -484,6 +498,114 @@ describe("the real jungle map", () => {
     }
     expect(state.grounded).toBe(true);
     expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
+  });
+
+  test("walks up the 262 ramp onto the block without tripping the anti-cheat", () => {
+    // Regression for the slope kick: walking right along platform B's top
+    // (y=192) rises up the 262 ramp at (19,11) (x=304 → y=176 at x=320) and
+    // steps onto the solid block top. The old vertical sampling lifted the
+    // box only to the slope's deepest point, burying its right side ~13px
+    // under the ramp; the box jammed against the block and every report
+    // read as buried-in-geometry (teleport), kicking at 12 violations.
+    const grid = jungleGrid();
+    const state = createPlayerState(config);
+    state.x = 14 * TILE_SIZE + 4; // 228 — on platform B's top
+    state.y = 12 * TILE_SIZE - config.height / 2; // 185 — feet at 192
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    let nextReport = 0;
+    for (let i = 0; i < 600; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (i >= nextReport) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+        nextReport = i + 3;
+      }
+      if (state.x > 20.5 * TILE_SIZE) break; // one tile past the ramp
+    }
+    expect(state.x).toBeGreaterThan(20.5 * TILE_SIZE);
+    expect(state.grounded).toBe(true);
+    expect(violations).toEqual([]);
+  });
+
+  test("walking under a 110 chamfer on a lower floor is not hoisted", () => {
+    // Corridor: solid walls at rows 12-13, an overhanging 110 chamfer at
+    // (3,14), solid floor at row 15. The box's top pokes into the chamfer
+    // cell while it walks on the floor below — the old flat-lip override
+    // hoisted it 16px onto the lip every cycle (a recurring bounce).
+    const gids = new Array<number>(8 * 16).fill(0);
+    for (let x = 3; x <= 7; x++) {
+      gids[12 * 8 + x] = TILE_SOLID;
+      gids[13 * 8 + x] = TILE_SOLID;
+    }
+    gids[14 * 8 + 3] = TILE_SLOPE_TL_BR;
+    for (let x = 0; x < 8; x++) gids[15 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 16, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE;
+    state.y = 15 * TILE_SIZE - config.height / 2; // feet on the floor (240)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      // The chamfer face may stop the walker (a head-level wall), but it
+      // must never lift the box off the floor.
+      expect(state.y).toBeLessThanOrEqual(floorY + 1e-6);
+    }
+    expect(state.grounded).toBe(true);
+  });
+
+  test("walking under a 109 cap on a lower floor is not hoisted", () => {
+    // Mirror of the 110 case: an overhanging 109 cap at (4,14), walking
+    // LEFT beneath it.
+    const gids = new Array<number>(8 * 16).fill(0);
+    for (let x = 4; x <= 7; x++) {
+      gids[12 * 8 + x] = TILE_SOLID;
+      gids[13 * 8 + x] = TILE_SOLID;
+    }
+    gids[14 * 8 + 4] = TILE_SLOPE_TR_BL;
+    for (let x = 0; x < 8; x++) gids[15 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 16, gids));
+    const state = createPlayerState(config);
+    state.x = 6 * TILE_SIZE;
+    state.y = 15 * TILE_SIZE - config.height / 2; // feet on the floor (240)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      expect(state.y).toBeLessThanOrEqual(floorY + 1e-6);
+    }
+    expect(state.grounded).toBe(true);
   });
 });
 
