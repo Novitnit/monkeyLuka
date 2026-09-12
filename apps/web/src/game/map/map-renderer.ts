@@ -12,6 +12,7 @@ import type Phaser from "phaser";
 import {
   ROOM_HEIGHT,
   ROOM_WIDTH,
+  roomGridSize,
   tileFrameForGid,
   type TiledMap,
   type TiledTileset,
@@ -136,14 +137,7 @@ export function renderTiledMap(
   }
 
   // The map is tiled by rooms; the last column/row may be partial.
-  const columns = Math.max(
-    1,
-    Math.ceil((map.width * map.tileWidth) / roomWidth),
-  );
-  const rows = Math.max(
-    1,
-    Math.ceil((map.height * map.tileHeight) / roomHeight),
-  );
+  const { columns, rows } = roomGridSize(map, roomWidth, roomHeight);
 
   const rooms: Phaser.GameObjects.Container[] = [];
   for (let row = 0; row < rows; row++) {

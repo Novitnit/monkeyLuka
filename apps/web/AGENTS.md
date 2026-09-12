@@ -15,26 +15,38 @@ separate `apps/server` process now mounts inside Next via Elysia's official
 
 ## Play flow & realtime client
 
-`/play` (`src/components/play-screen.tsx`) is the jungle entry point: a Play
-button opens a name dialog (the name goes on the leaderboard), then
+`/play` (`src/components/play-screen.tsx`) is the jungle entry point: it owns
+the join state machine (name → join → play) and the Phaser mount lifecycle.
+A Play button opens the name dialog (`src/components/name-dialog.tsx` — the
+name goes on the leaderboard; it owns autofocus + Escape-to-close), and the
+menu card itself is `src/components/play-menu.tsx`. On confirm,
 `colyseusClient.joinOrCreate("jungle", { name }, JungleState)` from
 `src/lib/colyseus.ts` joins the Colyseus room and boots the Phaser client
 (`src/game/jungle-game.ts`) into a fullscreen mount. Room state + room name
-come from `@monkeyluka/shared`.
+come from `@monkeyluka/shared`. Screen chrome shared with the placeholder
+screens (ambient glow backdrop, “back to menu” pill) lives in
+`src/components/chrome.tsx`.
 - The idle menu wears the shared chrome: `SiteHeader` at the top and a
   "← Back to the menu" link under the Play button. Once a room is joined the
   screen switches to the fullscreen Phaser mount (which keeps only its own
   Exit button).
-- The jungle client (`src/game/jungle-game.ts`) renders the Tiled map into
-  room containers, then spawns the player via `createPlayer()` from
-  `src/game/player/player.ts` (sprite sheets `Assets/player/sheets/idle.png`, served
-  via the `public/player` symlink; spawn **96,176** inside the first room). The
-  sprite is a child of the room container so it inherits room scale/position.
-  Tiled loading lives in `src/game/map/tiled-map.ts` (engine-free: fetches
-  `Assets/map/main.json` + `.tsx` tilesets via the `public/map` symlink) and
-  the Phaser rendering in `src/game/map/map-renderer.ts` (720×272 rooms, cropped
-  at room edges). `tsconfig.json` excludes `public` so the symlinked assets
-  aren't typechecked.
+- The jungle client is split for focus: `src/game/jungle-game.ts` is the thin
+  boot (dynamic `await import("phaser")` + game config) and the whole scene
+  lives in `src/game/jungle-scene.ts` (loads + renders the Tiled map into
+  room containers, spawns the player via `createPlayer()` from
+  `src/game/player/player.ts`, drives input, ~20 Hz reports and snapshot
+  reconciliation). Remote players are rendered by
+  `src/game/player/remote-players.ts` (one sprite per other session, eased
+  toward the server position from sprite sheets `Assets/player/sheets/idle.png`,
+  served via the `public/player` symlink; spawn **96,176** inside the first
+  room). The sprite is a child of the room container so it inherits room
+  scale/position. Tiled loading lives in `src/game/map/tiled-map.ts`
+  (engine-free: fetches `Assets/map/main.json` + `.tsx` tilesets via the
+  `public/map` symlink) with the tileset fetch/parse/image helpers in
+  `src/game/map/tileset-loader.ts`; the Phaser rendering in
+  `src/game/map/map-renderer.ts` (720×272 rooms, cropped at room edges).
+  `tsconfig.json` excludes `public` so the symlinked assets aren't
+  typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
   like `tiled-map.ts`)
   extracts collision geometry from the `layer1` tiles — 57/109/110 tiles
@@ -44,11 +56,28 @@ come from `@monkeyluka/shared`.
   for vertical; `side` tells which side the solid is on) plus the 109/110
   diagonal lines. **Collision ignores a layer's `visible` flag** — the
   hidden `layer1` is still parsed by `resolveTiledMap` and used; the renderer
-  (`map-renderer.ts`) is what skips `visible: false` layers.
+  (`map-renderer.ts`) is what skips `visible: false` layers. The room grid
+  (`roomGridSize` in `tiled-map.ts`) is shared by the renderer and the debug
+  overlay so both slice the map into rooms identically.
   `src/game/collision/collision-debug.ts` draws those as a Phaser overlay (green
   vertical walls, blue horizontal floors, orange slopes), toggleable via
   `__jungleCollisionDebug.setEnabled(false)`; `createJungleGame` takes
   `{ collisionDebug?: boolean }` (default on).
+
+- **Player movement & netcode**: `src/game/player/player.ts` drives the
+  monkey with the **shared physics** (`createPlayerState`/`stepPlayer` from
+  `@monkeyluka/shared`; the grid comes from building `layer1` with
+  `buildTileGrid` — the same gids the server validates against, so prediction
+  and collision share geometry). Movement is **client-simulated**: the scene
+  (`jungle-scene.ts`) reads arrows/WASD + Space/Up, predicts the local monkey
+  every frame, and renders that prediction directly — no server round-trip
+  before movement appears. It streams `PLAYER_INPUT_MESSAGE` at ~20 Hz (the
+  predicted `px/py/vx/vy/grounded/facing`), and reconciles
+  against the broadcast `PlayerInfo` snapshot (snap beyond 32 px, else a
+  clamped lean-in) so a report the server rejected visibly stops the monkey;
+  other players render directly from server positions (eased). The sprite is
+  flipped to `facing`; `render.rooms[0]` contains both local and remote
+  sprites, so coordinates are room-local.
 
 - **Phaser must be imported dynamically** — its bundle touches `window` at
   module scope, so `createJungleGame()` does `await import("phaser")` (never

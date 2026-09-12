@@ -20,17 +20,23 @@
  * collision block.
  */
 
+import {
+  COLLISION_LAYER_NAME,
+  TILE_SLOPE_TL_BR,
+  TILE_SLOPE_TR_BL,
+  TILE_SOLID,
+} from "@monkeyluka/shared";
 import type { TiledMap } from "../map/tiled-map";
 
 /** Solid wall tile: merges with neighbors into collision blocks. */
-export const WALL_TILE = 57;
+export const WALL_TILE = TILE_SOLID;
 /** Diagonal tile, solid on its top-left half (line top-left → bottom-right). */
-export const DIAGONAL_TL_TO_BR = 110;
+export const DIAGONAL_TL_TO_BR = TILE_SLOPE_TL_BR;
 /** Diagonal tile, solid on its top-right half (line top-right → bottom-left). */
-export const DIAGONAL_TR_TO_BL = 109;
+export const DIAGONAL_TR_TO_BL = TILE_SLOPE_TR_BL;
 
 /** Default tile layer holding the collision geometry. */
-export const DEFAULT_COLLISION_LAYER = "layer1";
+export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
 
 /**
  * "floor" = a horizontal boundary line (top or bottom of a group); "wall" =

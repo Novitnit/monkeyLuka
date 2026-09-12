@@ -1,6 +1,6 @@
 import { createRouter, defineRoom, defineServer, playground, WebSocketTransport } from "colyseus";
 import { compileOriginAllowlist, ROOM_NAMES } from "@monkeyluka/shared";
-import { JungleRoom } from "./rooms/jungle-room";
+import { JungleRoom } from "./rooms/jungle";
 
 const colyseusPort = Number(Bun.env.COLYSEUS_PORT ?? 2567);
 const hostname = Bun.env.HOST ?? "0.0.0.0";

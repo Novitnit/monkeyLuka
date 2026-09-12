@@ -49,10 +49,12 @@ CORS, so set it in `apps/web/.env` too.
 
 ## Room state schema
 
-`src/rooms/jungle-room.ts` (currently the only room) extends `Room<{
+`src/rooms/jungle/` (currently the only room) extends `Room<{
 state: JungleRoomState }>` from the shared `schema()` API — no decorators.
 It tracks joined players (`sessionId → name`) in the shared `JungleState`
 schema, clamping names with `MAX_PLAYER_NAME_LENGTH` from `@monkeyluka/shared`.
+`PlayerInfo` also carries the **broadcast** movement state — `x, y, vx, vy,
+grounded, facing` — written only by the room's report handler (see below).
 
 Because `noImplicitOverride` is on (Bun baseline), Colyseus lifecycle methods
 (`onCreate`, `onJoin`, `onLeave`, `onDispose`) and any base-class property you
@@ -60,6 +62,44 @@ re-declare (e.g. `maxClients`) must be marked `override`.
 
 Note: `setState()` is deprecated in this core — assign `this.state = ...`
 instead.
+
+## Client-simulated movement & anti-cheat
+
+Movement runs **client-side**: the client simulates itself every frame with the
+shared physics and reports the result. The room does **no simulation** — it
+only validates each report and relays it:
+
+1. `onCreate` loads the collision map (`src/game/jungle-map.ts`, reading the
+   same `Assets/map/main.json` via four levels up from this file, override with
+   `JUNGLE_MAP_PATH`) and registers the `PLAYER_INPUT_MESSAGE` handler. There is
+   no `setFixedTimestep` and no simulation loop.
+2. `onPlayerInput` sanitizes the payload shape (finite position/velocity/
+   grounded/facing), applies a **flood rate limit**
+   (`ANTI_CHEAT.maxInputRatePerSecond`), drops non-increasing `seq` (the
+   WebSocket is ordered, so that means forgery/retransmit), then runs
+   `validatePositionReport()` against the **last accepted report** — teleport
+   (too far from it, or buried in solid geometry) and abnormal-speed checks.
+3. A clean report becomes the new broadcast state: its `x/y/vx/vy/grounded/
+   facing` are written to `PlayerInfo` (only changed fields, to cut patch
+   churn; velocity is clamped to the physics ceiling since it is display-only).
+   A failing report **stops the player** — the broadcast keeps the last
+   accepted position with velocity zeroed — and increments the violation
+   counter; the client is kicked at `ANTI_CHEAT.maxViolations`. After a stop
+   the player only moves again once a report passes validation: a one-off
+   glitch resumes in ~one report interval, sustained abnormal movement stays
+   frozen and escalates to a kick.
+
+`PlayerInfo` is written only from accepted reports; no raw client position ever
+reaches the schema unvalidated. What the server checks is **plausibility**, not
+full reachability: every report is bounded by the physical speed ceiling and
+must be out of solid geometry, but a cheater pathing through a thin wall across
+several individually-plausible reports is not caught (catch it by re-enabling
+server-side re-simulation if that ever matters). Set
+`JUNGLE_DEBUG_VALIDATION=1` to log rejected reports with their delta/flags.
+
+Known limitation: `stepPlayer` blocks against slope *faces* horizontally, so
+walkable ramps aren't supported — the current map only uses 109/110 as
+under-bevels. Keep that in mind if new slope tiles become floors.
 
 ## Colyseus 0.18 quirks
 
@@ -73,5 +113,6 @@ instead.
 
 ## Commands
 
-From this dir: `bun run dev` (watch mode), `bun run start`, `bun run typecheck`.
-From the repo root: `bun run dev:server`, `bun run start:server`.
+From this dir: `bun run dev` (watch mode), `bun run start`, `bun run typecheck`,
+`bun test`. From the repo root: `bun run dev:server`, `bun run start:server`,
+`bun run typecheck:server`, `bun test`.

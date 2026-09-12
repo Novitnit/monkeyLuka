@@ -1,32 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  IconBookOpen,
-  IconChevronRight,
-  IconPlay,
-  IconTrophy,
-} from "@/components/icons";
-
-const menuItems = [
-  {
-    href: "/play",
-    label: "Play",
-    icon: IconPlay,
-    primary: true,
-  },
-  {
-    href: "/leaderboard",
-    label: "Leaderboard",
-    icon: IconTrophy,
-    primary: false,
-  },
-  {
-    href: "/how-to-play",
-    label: "How to Play",
-    icon: IconBookOpen,
-    primary: false,
-  },
-] as const;
+import { IconChevronRight } from "@/components/icons";
+import { NAV_ITEMS } from "@/components/nav-items";
 
 export default function Home() {
   return (
@@ -38,7 +13,7 @@ export default function Home() {
         fill
         priority
         sizes="100vw"
-        className="pointer-events-none object-cover opacity-60"
+        className="pointer-events-none object-cover"
       />
 
       {/* Scrims for text legibility */}
@@ -82,7 +57,7 @@ export default function Home() {
           aria-label="Main menu"
           className="mt-2 flex w-[min(19rem,100%)] flex-col gap-3 sm:w-[21rem] compact:mt-1 compact:gap-2"
         >
-          {menuItems.map((item, index) => {
+          {NAV_ITEMS.map((item, index) => {
             const Icon = item.icon;
             return (
               <Link

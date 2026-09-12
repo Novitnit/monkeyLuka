@@ -16,7 +16,8 @@
     "typecheck": "bun run typecheck:web && bun run typecheck:server && bun run typecheck:shared",
     "typecheck:web": "cd apps/web && tsc --noEmit",
     "typecheck:server": "cd apps/server && tsc --noEmit",
-    "typecheck:shared": "cd packages/shared && tsc --noEmit"
+    "typecheck:shared": "cd packages/shared && tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",

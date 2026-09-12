@@ -9,6 +9,8 @@
 
 import { schema, t } from "@colyseus/schema";
 
+export * from "./physics";
+
 export const APP_NAME = "monkeyLuka";
 
 /** A room/game identifier used by both server and client. */
@@ -21,11 +23,22 @@ export const MAX_PLAYER_NAME_LENGTH = 24;
 
 /**
  * A player's public identity inside a jungle room — keyed by sessionId in
- * `JungleState.players`. Kept lean on purpose; leaderboard stats get added
- * here as the game ships.
+ * `JungleState.players`. `name` is the leaderboard identity; the position/
+ * velocity fields are the **authoritative** state the room broadcasts: the
+ * last client movement report that passed validation (velocity clamped to
+ * the physics max). The client renders this state and reconciles its local
+ * prediction against it; a report that fails validation leaves the player
+ * stopped at the previously accepted position. See `physics.ts` for the
+ * shared simulation and its validation rules.
  */
 export const PlayerInfo = schema({
   name: t.string(),
+  x: t.number(),
+  y: t.number(),
+  vx: t.number(),
+  vy: t.number(),
+  grounded: t.boolean(),
+  facing: t.number(),
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;
 

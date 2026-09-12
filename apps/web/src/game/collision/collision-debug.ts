@@ -12,7 +12,12 @@
  */
 
 import type Phaser from "phaser";
-import { ROOM_HEIGHT, ROOM_WIDTH, type TiledMap } from "../map/tiled-map";
+import {
+  ROOM_HEIGHT,
+  ROOM_WIDTH,
+  roomGridSize,
+  type TiledMap,
+} from "../map/tiled-map";
 import type { CollisionGeometry } from "./collision-geometry";
 
 export interface CollisionDebugOptions {
@@ -95,7 +100,7 @@ export function createCollisionDebug(
   const lineWidth = options.lineWidth ?? 2;
 
   // Room grid: same row-major layout as the map renderer.
-  const columns = Math.max(1, Math.ceil((map.width * map.tileWidth) / roomWidth));
+  const { columns } = roomGridSize(map, roomWidth, roomHeight);
 
   let enabled = options.enabled ?? true;
   const graphics: Phaser.GameObjects.Graphics[] = [];

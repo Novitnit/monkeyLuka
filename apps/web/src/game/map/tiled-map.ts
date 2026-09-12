@@ -6,8 +6,19 @@
  * tileset, resolves the tileset image URL, and preloads the image so the
  * Phaser renderer can register it synchronously via `textures.addImage`.
  * No Phaser imports here — engine-free so it stays SSR-safe and
- * typecheckable on its own.
+ * typecheckable on its own. The tileset fetch/parse/image helpers live in
+ * `./tileset-loader.ts`.
  */
+
+import {
+  basename,
+  fetchText,
+  joinUrl,
+  loadImage,
+  parseTmx,
+  pickImageUrl,
+  type ParsedTmx,
+} from "./tileset-loader";
 
 /** A room is a 480×272 window over the map. */
 export const ROOM_WIDTH = 480;
@@ -51,6 +62,27 @@ export interface TiledMap {
   tilesets: TiledTileset[];
 }
 
+/**
+ * Number of `roomWidth`×`roomHeight` windows the map divides into (row-major
+ * grid; the last row/column may be partial). Shared by the map renderer and
+ * the collision-debug overlay so both slice the map into rooms identically.
+ */
+export function roomGridSize(
+  map: TiledMap,
+  roomWidth: number,
+  roomHeight: number,
+): { rows: number; columns: number } {
+  const rows = Math.max(
+    1,
+    Math.ceil((map.height * map.tileHeight) / roomHeight),
+  );
+  const columns = Math.max(
+    1,
+    Math.ceil((map.width * map.tileWidth) / roomWidth),
+  );
+  return { rows, columns };
+}
+
 /** Minimal shape of the raw Tiled JSON export we consume (main.json). */
 export interface RawTiledMap {
   width: number;
@@ -75,112 +107,6 @@ export interface RawTiledMap {
     tilewidth?: number;
     tileheight?: number;
   }>;
-}
-
-/** Shape of the `<tileset>` element we parse out of a `.tsx` file. */
-interface ParsedTmx {
-  name: string;
-  tileWidth: number;
-  tileHeight: number;
-  columns: number;
-  tileCount: number;
-  image: string;
-  imageWidth: number;
-  imageHeight: number;
-}
-
-function joinUrl(base: string, path: string): string {
-  return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-}
-
-function basename(path: string): string {
-  return path.split("/").pop() ?? path;
-}
-
-async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url} (HTTP ${response.status})`);
-  }
-  return response.text();
-}
-
-/** Loads an image into the browser cache and resolves with the element. */
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () =>
-      reject(new Error(`Could not load image ${url}`));
-    image.src = url;
-  });
-}
-
-/**
- * Tries each candidate URL in order and returns the first that loads.
- * Needed because some `.tsx` files reference asset paths from their original
- * download location (e.g. `Legacy-Fantasy - High Forest 2.3/Assets/Tiles.png`)
- * that don't exist in this repo — we fall back to the bare filename.
- */
-async function pickImageUrl(candidates: string[]): Promise<string> {
-  const seen = new Set<string>();
-  for (const url of candidates) {
-    if (seen.has(url)) continue;
-    seen.add(url);
-    try {
-      await loadImage(url);
-      return url;
-    } catch {
-      // try the next candidate
-    }
-  }
-  throw new Error(
-    `Could not load tileset image (tried: ${candidates.join(", ")})`,
-  );
-}
-
-/** Parses the `<tileset>` element out of a `.tsx` file. */
-function parseTmx(xml: string): ParsedTmx {
-  const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const tileset = doc.getElementsByTagName("tileset")[0];
-  if (!tileset) {
-    throw new Error("Tileset file has no <tileset> element");
-  }
-  const image = tileset.getElementsByTagName("image")[0];
-  if (!image) {
-    throw new Error("Tileset file has no <image> element");
-  }
-
-  const attr = (el: Element, name: string): number => {
-    const value = el.getAttribute(name);
-    return value === null ? Number.NaN : Number(value);
-  };
-
-  const tileWidth = attr(tileset, "tilewidth");
-  const tileHeight = attr(tileset, "tileheight");
-  const tileCount = attr(tileset, "tilecount");
-  const columns =
-    attr(tileset, "columns") ||
-    Math.max(1, Math.floor(attr(image, "width") / tileWidth));
-
-  if (
-    Number.isNaN(tileWidth) ||
-    Number.isNaN(tileHeight) ||
-    Number.isNaN(tileCount)
-  ) {
-    throw new Error("Tileset file is missing tilewidth/tileheight/tilecount");
-  }
-
-  return {
-    name: tileset.getAttribute("name") ?? "tileset",
-    tileWidth,
-    tileHeight,
-    columns,
-    tileCount,
-    image: image.getAttribute("source") ?? "",
-    imageWidth: attr(image, "width"),
-    imageHeight: attr(image, "height"),
-  };
 }
 
 /** Parses a raw Tiled JSON map (already fetched) into our normalized model. */

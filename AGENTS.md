@@ -45,6 +45,9 @@ monkeyLuka/
 │   └── server/           # @monkeyluka/server — Colyseus realtime matchmaker + rooms (defineServer) → apps/server/AGENTS.md
 └── packages/
     └── shared/           # @monkeyluka/shared — framework-agnostic shared code → packages/shared/AGENTS.md
+        └── src/
+            ├── index.ts      # schemas (JungleState/PlayerInfo), room names, origin allowlist
+            └── physics.ts    # barrel → tiles.ts / collision.ts / player.ts / validation.ts
 ```
 
 ## Requirements & versions
@@ -132,6 +135,7 @@ every consumer must respect:
 | `bun run build:web` | Production build of the Next.js app |
 | `bun run start:server` | Run the server without watch mode |
 | `bun run typecheck` | `tsc --noEmit` for web, server, and shared |
+| `bun test` | Unit tests: shared physics/collision + server map loader |
 
 Per-workspace scripts also work from inside the app dir (`bun run dev` in
 `apps/web`). Don't use `npm run`; Bun's shell runner resolves workspace bins
@@ -155,3 +159,19 @@ Workspace-specific gotchas (Next.js typegen / LAN dev, Colyseus internals,
 `transpilePackages`) live in the respective workspace `AGENTS.md`. Non-obvious
 bugs and their fixes get a write-up in `discoveries/` — one file per discovery;
 see `discoveries/agents.md` for the format and conventions.
+
+## Gameplay simulation & anti-cheat (current state)
+
+The player simulation is **client-side**: the client runs the collision and
+run/jump physics every frame with `packages/shared/src/physics.ts` (tile
+collision: 57 solid, 110/109 slopes) and renders its own prediction with no
+server round-trip. The Colyseus room does **no simulation** — it only
+validates the client's movement reports (malformed / flood / teleport /
+abnormal speed / buried-in-geometry via `validatePositionReport`) and
+broadcasts the last accepted report. A failing report **stops the player**
+(the broadcast freezes at the last accepted position, velocity zeroed) while
+violations count toward a kick. `PlayerInfo` position/velocity fields come
+from accepted client reports only (velocity clamped to the physics max) — a
+raw client-supplied position is never trusted, and after a stop the player
+only moves again once a report passes validation. Details live in the
+`shared`, `server`, and `web` workspace guides.

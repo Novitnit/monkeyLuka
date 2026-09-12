@@ -1,0 +1,127 @@
+/**
+ * Networking contract between the client simulation and the server's
+ * anti-cheat: the `player:input` wire message and `validatePositionReport`,
+ * the pure trajectory checks (teleport / abnormal speed) the Colyseus room
+ * runs on every client report before broadcasting it.
+ */
+
+import { isPointSolid } from "./collision";
+import { DEFAULT_PLAYER_PHYSICS, maxPlayerSpeed } from "./player";
+import { TILE_SIZE } from "./tiles";
+import type { PlayerPhysicsConfig } from "./player";
+import type { SolidGrid } from "./tiles";
+
+/** Colyseus message name: client → server movement report. */
+export const PLAYER_INPUT_MESSAGE = "player:input";
+
+/**
+ * Payload of `PLAYER_INPUT_MESSAGE`. Collision runs **client-side** (see
+ * `stepPlayer`); this is the client's per-report summary of its simulated
+ * state (position, velocity, contact, facing). Everything is advisory — the
+ * server validates the reported trajectory (teleport / abnormal speed /
+ * buried-in-geometry, see `validatePositionReport`) and broadcasts only
+ * reports that pass. A failing report stops the player at the last accepted
+ * position while the violation counts toward a kick.
+ */
+export interface PlayerInputMessage {
+  /** Client-incrementing counter; server drops out-of-order or flooded seqs. */
+  seq: number;
+  /** Client-predicted position (map pixels, AABB center) — advisory. */
+  px: number;
+  py: number;
+  /** Resulting velocity, px/s — advisory (clamped on the server). */
+  vx: number;
+  vy: number;
+  /** Resulting contact state — advisory. */
+  grounded: boolean;
+  /** Resulting facing, 1 right / -1 left — advisory (normalized on server). */
+  facing: number;
+}
+
+/** Anti-cheat tuning shared so client and server agree on the rules. */
+export const ANTI_CHEAT = {
+  /**
+   * Ceiling on accepted input messages per second (the client sends ~20 Hz;
+   * this allows the same input to be re-sent at a slightly higher rate).
+   */
+  maxInputRatePerSecond: 25,
+  /**
+   * Max distance between the client's reported position and the last accepted
+   * position before the report counts as a teleport violation. Real teleports
+   * (crossing the map instantly) exceed this; one report of latency stays far
+   * below it.
+   */
+  maxPositionError: TILE_SIZE * 5,
+  /**
+   * Max extra displacement per second on top of the physical speed ceiling
+   * before consecutive reports look like speed-hacking.
+   */
+  maxSpeedSlackPerSecond: TILE_SIZE * 12,
+  /** Violations recorded before the room kicks the client. */
+  maxViolations: 12,
+} as const;
+
+/**
+ * Validates one reported position against the last accepted position and the
+ * previous report. Pure so the room logic stays thin and testable.
+ *
+ * Client-authoritative model: the client simulates its own movement and this
+ * validates the *trajectory* it reports. The room accepts a clean report and
+ * broadcasts it as the player's state; a failing report stops the player —
+ * the broadcast stays at the last accepted position while violations count
+ * toward a kick. `authoritative` is that last accepted position (the server
+ * no longer re-simulates); `dt` is the wall-clock seconds since it was
+ * accepted (null for the first report of a session).
+ *
+ * Returns a list of `"teleport" | "speed"` violation types (empty = fine).
+ */
+export function validatePositionReport(
+  grid: SolidGrid,
+  reported: { px: number; py: number },
+  authoritative: { x: number; y: number },
+  previous: { px: number; py: number } | null,
+  dt: number | null,
+  config: PlayerPhysicsConfig = DEFAULT_PLAYER_PHYSICS,
+): Array<"teleport" | "speed"> {
+  if (!Number.isFinite(reported.px) || !Number.isFinite(reported.py)) {
+    return ["teleport"];
+  }
+  const violations: Array<"teleport" | "speed"> = [];
+
+  // The reported spot must at least be a plausible place to stand/be: reject
+  // positions deep inside solid geometry outright. Samples are inset from the
+  // collider's edges because a player resting on a floor or pressed against a
+  // wall has its outline exactly ON the solid boundary — which is legal.
+  const inset = 1;
+  const halfW = Math.max(0, config.width / 2 - inset);
+  const halfH = Math.max(0, config.height / 2 - inset);
+  if (
+    isPointSolid(grid, reported.px, reported.py) ||
+    isPointSolid(grid, reported.px - halfW, reported.py) ||
+    isPointSolid(grid, reported.px + halfW, reported.py) ||
+    isPointSolid(grid, reported.px, reported.py - halfH) ||
+    isPointSolid(grid, reported.px, reported.py + halfH)
+  ) {
+    violations.push("teleport");
+  }
+
+  // Far from the last accepted report → teleporting.
+  const error = Math.hypot(
+    reported.px - authoritative.x,
+    reported.py - authoritative.y,
+  );
+  if (error > ANTI_CHEAT.maxPositionError) violations.push("teleport");
+
+  // Faster-than-physics displacement between consecutive reports → speed hack.
+  if (previous && dt !== null && dt > 0) {
+    const moved = Math.hypot(
+      reported.px - previous.px,
+      reported.py - previous.py,
+    );
+    const allowed = maxPlayerSpeed(config) * dt +
+      ANTI_CHEAT.maxSpeedSlackPerSecond * dt;
+    if (moved > allowed) violations.push("speed");
+  }
+
+  return violations;
+}

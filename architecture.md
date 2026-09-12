@@ -18,9 +18,12 @@ Two processes make up the running system:
 | `@monkeyluka/server` (Colyseus) | `:2567` | Realtime matchmaker + WebSocket rooms |
 
 The browser talks to the web app over HTTP(S) for pages and the REST API, and
-to the Colyseus server over WebSocket for realtime game state. There is no
-gameplay simulation on the server yet — the room currently tracks who is in
-the jungle and syncs that state to every client.
+to the Colyseus server over WebSocket for realtime game state. Gameplay is
+**client-simulated**: the client runs the shared collision + run/jump physics
+every frame and renders its own prediction with no server round-trip; the
+room only validates the movement reports it receives (teleport / abnormal
+speed / buried-in-geometry) and broadcasts the accepted trajectory, stopping
+a player whose reports look abnormal.
 
 ## 2. System diagram
 
@@ -32,7 +35,9 @@ the jungle and syncs that state to every client.
   (React 19)            │   ├─ pages: /, /play, /leaderboard,        │
       │                 │   │   /how-to-play                         │
       │   WebSocket     │   ├─ Phaser 4 client (dynamic import)      │
-      │   (Colyseus)    │   └─ Elysia REST API under /api            │
+      │   (Colyseus)    │   │    ├─ shared physics simulation         │
+      │                 │   │    └─ predicted state → server, renders │
+      │                 │   └─ Elysia REST API under /api            │
       │                 │        GET /          project info         │
       │                 │        GET /health    live HealthStatus    │
       │                 │                                            │
@@ -41,8 +46,12 @@ the jungle and syncs that state to every client.
 │  (state schema  │            │          @monkeyluka/server (:2567)    │
 │  shared via     │  WS        │  Colyseus 0.18 (defineServer format)   │
 │  @monkeyluka/   │◄──────────►│  rooms: { jungle: JungleRoom }          │
-│  shared, raw-TS)│            │  JungleRoom syncs JungleState.players   │
-└─────────────────┘            └────────────────────────────────────────┘
+│  shared, raw-TS)│   report   │  JungleRoom:                           │
+└─────────────────┘   ↓        │   ├─ loads Assets/map/main.json        │
+                          │    │   ├─ relays validated client reports  │
+                          │    │   ├─ validates reports (teleport/speed)│
+                          │    │   └─ syncs JungleState.players         │
+                          └────►└────────────────────────────────────────┘
 ```
 
 Both processes import the **same** `@monkeyluka/shared` package — including
@@ -71,10 +80,12 @@ monkeyLuka/
 │   └── server/                  # @monkeyluka/server — Colyseus only
 │       └── src/
 │           ├── index.ts         # defineServer() bootstrap + origin gate
-│           └── rooms/jungle-room.ts
+│           └── rooms/jungle/    # JungleRoom + bookkeeping/input/schema-write
 └── packages/
     └── shared/                  # @monkeyluka/shared — raw-TS shared code
-        └── src/index.ts         # ROOM_NAMES, JungleState/PlayerInfo schemas, …
+        └── src/
+            ├── index.ts         # schemas, room names, shared constants
+            └── physics.ts       # barrel → tiles/collision/player/validation
 ```
 
 ## 4. Runtime & packaging decisions
@@ -93,13 +104,24 @@ monkeyLuka/
 
 ## 5. @monkeyluka/shared — the single source of truth
 
-`packages/shared/src/index.ts` is the shared contract between server and web:
+`packages/shared/src/index.ts` is the shared contract between server and web,
+and `packages/shared/src/physics.ts` is the shared **simulation & validation**
+engine both sides run verbatim:
 
 - `ROOM_NAMES.jungle` — the public matchmaker room name clients join with.
 - `MAX_PLAYER_NAME_LENGTH` (24) — name clamp enforced on both client (input)
   and server (join options).
 - `PlayerInfo` / `JungleState` — `@colyseus/schema` **schemas** describing the
-  synced room state (`JungleState` = `players: Map<sessionId, PlayerInfo>`).
+  synced room state (`JungleState` = `players: Map<sessionId, PlayerInfo>`);
+  `PlayerInfo` carries the authoritative `x/y/vx/vy/grounded/facing`.
+- `physics.ts` — barrel re-exporting the split simulation/validation modules
+  `tiles.ts` (tile constants, grid, world bounds), `collision.ts` (point/AABB
+  tests + penetration helpers), `player.ts` (`stepPlayer()`: run accel, gravity,
+  coyote/buffered jump), `validation.ts` (`PLAYER_INPUT_MESSAGE` contract + `validatePositionReport()` + `ANTI_CHEAT` rules). Covered by
+  `src/physics.test.ts` (`bun test`). Movement runs **client-side**: the client
+  simulates itself every frame with `stepPlayer()` and reports the result; the
+  room validates the reported trajectory and broadcasts it, stopping the player
+  while a report fails.
 - `HealthStatus` — the shape served by `/api/health`.
 - Small constants (`APP_NAME`) and helpers (`greeting()`).
 
@@ -111,8 +133,10 @@ break schema behavior. Shipping raw TypeScript keeps one module identity for
 all consumers. The price: Turbopack doesn't follow bare `.ts` exports on its
 own, so Next.js adds `@monkeyluka/shared` to `transpilePackages`.
 
-The schemas are the **serialization format shared over the wire** — room
-logic deliberately does not live in this package.
+The schemas are the **serialization format shared over the wire**; the
+physics is the **simulation contract** — the client runs it for rendering, and
+the room logic (report sanitization, validation, stop-on-violation and kick
+rules) deliberately lives in the server, not here.
 
 ## 6. @monkeyluka/server — realtime (Colyseus)
 
@@ -129,13 +153,24 @@ defineServer({
 - **`rooms` object keys are the public matchmaker names** — the `jungle` key
   is what clients `joinOrCreate("jungle", …)` against.
 - `defineRoom()` takes a room **class** (no object-literal rooms in this
-  core). `JungleRoom` (`src/rooms/jungle-room.ts`) extends
+  core). `JungleRoom` (`src/rooms/jungle/`) extends
   `Room<{ state: JungleRoomState }>`:
-  - `onCreate` → `this.state = new JungleState()` (note: `setState()` is
-    deprecated in this core).
-  - `onJoin` → insert `PlayerInfo({ name })` keyed by `client.sessionId`,
-    clamping the name with `MAX_PLAYER_NAME_LENGTH`.
+  - `onCreate` → loads the map via `src/game/jungle-map.ts` (from
+    `Assets/map/main.json`), `this.state = new JungleState()`, and registers
+    the `PLAYER_INPUT_MESSAGE` handler. There is **no simulation loop** —
+    movement is client-simulated; per report the room validates and writes
+    the accepted `x/y/vx/vy/grounded/facing` into `PlayerInfo`.
+  - `onJoin` → insert `PlayerInfo({ name, … })` (physics starts at
+    `PLAYER_SPAWN`) keyed by `client.sessionId`, clamping the name with
+    `MAX_PLAYER_NAME_LENGTH`.
   - `onLeave` → delete the session's entry; `onDispose` → clear all.
+  - **Anti-cheat**: input payloads are shape-checked, rate-limited
+    (`ANTI_CHEAT.maxInputRatePerSecond`), seq-checked, and the reported
+    trajectory is validated by `validatePositionReport()` against the last
+    accepted report (teleport / abnormal speed / buried-in-geometry); a
+    failing report stops the player at the last accepted position and
+    violations count toward a kick at `ANTI_CHEAT.maxViolations`. No
+    unvalidated client-supplied position is ever written to the schema.
   - `maxClients = 20` is a soft cap until real matchmaking/filtering lands.
 - **Origin gate**: `ALLOWED_ORIGIN_HOST` is a **comma-separated host
   allowlist** compiled by `compileOriginAllowlist()` in `@monkeyluka/shared`
@@ -167,8 +202,8 @@ PWA) — no user gesture, no lock, no rendering.
    live-synced.
 3. **Boot Phaser.** Once joined, `createJungleGame()` (in
    `src/game/jungle-game.ts`) mounts a Phaser 4 game into a fullscreen div,
-   reading the player's name and room id from the room state, and renders a
-   placeholder scene ("Gameplay is being built…").
+   reading the player's name and room id from the room state, renders the
+   Tiled map with collision debug, and starts the movement loop (§9).
 
 The screen tracks a small phase machine (`idle → naming → joining → playing`)
 and carefully tears everything down on exit/unmount: Phaser instance is
@@ -231,11 +266,18 @@ Player (browser)
   │  2. Play → dialog (name validated)
   │  3. joinOrCreate("jungle", {name}, JungleState)
   │     └─ WebSocket upgrade (:2567)   → Colyseus matchmaker
-  │  4. JungleRoom.onJoin:             → state.players[sessionId] = PlayerInfo(name)
-  │  5. state patch broadcast          → all room members' room.state updates
-  │  6. client boots Phaser            → reads own name + roomId from room.state
+  │  4. JungleRoom.onJoin:             → state.players[sessionId] = PlayerInfo(name, spawn)
+  │  5. client boots Phaser            → builds SolidGrid from layer1 (same gids as server)
+  │  6. every frame:                   → keyboard → PlayerInput → stepPlayer() (client-side collision)
+  │                                    → sprite renders the prediction directly (no server wait)
+  │  7. ~20 Hz:                        → PLAYER_INPUT_MESSAGE (seq, predicted pos/vel/state)
+  │     server per report:            → sanitize + flood/seq → validatePositionReport()
+  │                                    → clean: broadcast as PlayerInfo fields
+  │                                    → failing: stop (freeze + zero v) + count violation
+  └── state patch broadcast            → all members' room.state updates
+  │  8. local player reconciles against broadcast x/y; remote players ease to it
   ▼
-Phaser placeholder scene ("Connected to the jungle as …")
+Phaser jungle scene (walk/jump via shared physics)
 ```
 
 ## 10. Cross-cutting gotchas (codified in AGENTS.md)
@@ -258,7 +300,12 @@ The codebase is foundation-stage and self-documents its next steps:
 - Leaderboard identity exists in `JungleState.players`; leaderboard **stats**
   are called out as the next addition to `PlayerInfo`.
 - `maxClients` is a soft cap until real **matchmaking/filtering** lands.
-- Phaser renders a placeholder scene; actual **gameplay** is being built.
+- **Gameplay is now client-simulated with server-side anomaly detection**:
+  shared tile collision + run/jump physics run on the client; the room
+  validates movement reports and stops players whose reports look abnormal
+  (kick after repeated violations). Next steps: walk/other animations, better
+  netcode feel (delay compensation / rollback), vertical z-ordering, and
+  goals/collectibles.
 - `map/` is reserved for tracked **Tiled game-map data + art** (not a Bun
   workspace), per the root `AGENTS.md`, though the directory doesn't exist
   yet.
