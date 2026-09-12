@@ -1,11 +1,14 @@
 /**
  * Phaser side of the Tiled map: registers each tileset as a texture (one
  * frame per tile), then renders the map as separate `ROOM_WIDTH`×`ROOM_HEIGHT`
- * rooms. Anything that would overflow a room's 480×272 bounds is cropped away.
+ * rooms. Anything that would overflow a room's bounds is cropped away.
  *
  * Rooms are laid out in a grid (row-major). The whole grid is scaled to fill
- * the canvas height as much as possible and centered, so whatever horizontal
- * space is left over becomes the left/right margins.
+ * the canvas height as much as possible and centered; whatever horizontal
+ * space is left over becomes the left/right margins. `ROOM_WIDTH` (484) is
+ * deliberately a bit wider than the 480px rooms the map was designed with,
+ * so a scaled room always covers the full 1280px canvas and the seams to
+ * neighboring rooms stay off-screen.
  */
 
 import type Phaser from "phaser";

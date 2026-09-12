@@ -50,7 +50,19 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   (engine-free: fetches `Assets/map/main.json` + `.tsx` tilesets via the
   `public/map` symlink) with the tileset fetch/parse/image helpers in
   `src/game/map/tileset-loader.ts`; the Phaser rendering in
-  `src/game/map/map-renderer.ts` (720×272 rooms, cropped at room edges).
+  `src/game/map/map-renderer.ts` (rooms are `ROOM_WIDTH`×`ROOM_HEIGHT` —
+  484×272: one *designed* 480px room plus a 4px sliver, cropped at room
+  edges; `jungle-scene.ts` passes `gap: 0` so room columns abut exactly and
+  the map renders as one continuous world — tile, physics, and camera
+  coordinates agree across the room seams). The scene camera is room-locked:
+  every frame it snaps to the whole `ROOM_WIDTH`×`ROOM_HEIGHT` room the
+  local monkey is in (never a smooth follow), so only the current room is
+  ever visible and neighbors stay off-screen until the player crosses a
+  boundary. The 480→484 bump exists because the renderer scales rooms to
+  fill the 1280×720 canvas *height* (scale ≈ 2.647): a 480px room would
+  render only ≈ 1270.6px wide and the sealed camera viewport would show a
+  ~9.4px sliver of the next room — see
+  `discoveries/room-camera-shows-adjacent-room-seam.md`.
   `tsconfig.json` excludes `public` so the symlinked assets aren't
   typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,

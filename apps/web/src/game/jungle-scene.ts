@@ -85,6 +85,10 @@ export function buildJungleScene(
   let player: Player | null = null;
   let grid: SolidGrid | null = null;
   let container: Phaser.GameObjects.Container | null = null;
+  /** Room grid from the map render, for the room-locked camera. */
+  let rooms: Phaser.GameObjects.Container[] | null = null;
+  let roomColumns = 1;
+  let roomRows = 1;
   let cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
   let keyA: Phaser.Input.Keyboard.Key | null = null;
   let keyD: Phaser.Input.Keyboard.Key | null = null;
@@ -126,9 +130,15 @@ export function buildJungleScene(
             const raw = this.cache.json.get("jungle-map") as RawTiledMap;
             const map = await resolveTiledMap(MAP_DIR, raw);
 
+            // The world is one continuous map: rooms must abut exactly (gap
+            // 0) so tile, physics, and camera coordinates line up across
+            // the room seams. ROOM_WIDTH is a bit wider than the designed
+            // 480px rooms so each rendered room covers the whole 1280px
+            // camera and the next room never peeks in.
             const render = renderTiledMap(this, map, {
               roomWidth: ROOM_WIDTH,
               roomHeight: ROOM_HEIGHT,
+              gap: 0,
             });
 
             (window as unknown as Record<string, unknown>).__jungleRender = render;
@@ -164,6 +174,9 @@ export function buildJungleScene(
             }
             grid = buildTileGrid(layer);
             container = render.rooms[0];
+            rooms = render.rooms;
+            roomColumns = render.columns;
+            roomRows = render.rows;
 
             // Register the idle/jog/jump animations (needs the sheets that
             // just finished loading) before any sprite is spawned.
@@ -299,6 +312,23 @@ export function buildJungleScene(
         }
       }
       player.render(dt);
+
+      // --- Room-locked camera: only the ROOM_WIDTH-wide room the player is
+      // in is ever visible. The camera snaps to that room (never follows the
+      // player smoothly), so the neighboring rooms stay off-screen until the
+      // player crosses a room boundary. ---
+      if (rooms) {
+        const col = Math.min(
+          roomColumns - 1,
+          Math.max(0, Math.floor(player.physics.x / ROOM_WIDTH)),
+        );
+        const row = Math.min(
+          roomRows - 1,
+          Math.max(0, Math.floor(player.physics.y / ROOM_HEIGHT)),
+        );
+        const roomView = rooms[row * roomColumns + col];
+        this.cameras.main.setScroll(roomView.x, roomView.y);
+      }
 
       syncRemotePlayers(this, room, remotePlayers, container, dt);
     },

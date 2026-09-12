@@ -20,7 +20,17 @@ import {
   type ParsedTmx,
 } from "./tileset-loader";
 
-/** A room is a 480×272 window over the map. */
+/**
+ * Size of the map window each room renders and the room-locked camera
+ * shows. Rooms are *designed* 480×272, but ROOM_WIDTH is 484: the renderer
+ * scales the map to fill the 1280×720 canvas height (scale = 720/272 ≈
+ * 2.647), so a 480px room renders only ≈ 1270.6px wide — 9.4px narrower
+ * than the canvas, which let the room-locked camera (scrolled to the room
+ * edge) show a sliver of the next room. A 484px window renders ≈ 1281.2px,
+ * pushing the seam just off-screen. Only rendering and the camera room-lock
+ * read this — the physics grid and the server use raw map tiles, so the
+ * 4px overlap changes no gameplay geometry.
+ */
 export const ROOM_WIDTH = 480;
 export const ROOM_HEIGHT = 272;
 
