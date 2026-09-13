@@ -30,6 +30,26 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   "← Back to the menu" link under the Play button. Once a room is joined the
   screen switches to the fullscreen Phaser mount (which keeps only its own
   Exit button).
+- **Mobile / short-viewport responsiveness**: the whole `/play` flow is sized
+  to the viewport and never scrolls vertically. The screen's menu, loader,
+  and playing states all use fixed `h-dvh` wrappers with `overflow-hidden`
+  (no `min-h-dvh`: a growing wrapper is what let the menu spill past the
+  viewport on landscape phones); `globals.css` defines the `compact`
+  (≤560px tall), `short` (≤440px tall), and `micro` (≤312px tall)
+  `@custom-variant`s — the site header stays visible at every size but
+  compacts (`SiteHeader`'s `h-16` → `short:h-12`) and the menu card
+  tightens at `short`, then visually shrinks (`micro:scale-[0.78]` on a
+  wrapper, never on the `animate-rise` card itself) at `micro` (fold-cover
+  screens ~280px tall) so nothing is ever cropped; the menu's `main` uses
+  `clamp()`-based padding so the full-size card also fits the 561–582px
+  band just above `compact` without cropping. The in-game canvas already
+  fills the viewport height via Phaser `Scale.FIT` + `CENTER_BOTH`
+  (letterboxed horizontally on wide screens), and the Exit button sits at
+  `max(1rem, env(safe-area-inset-*))` so it clears phone notches;
+  `overscroll-behavior: none` on `body` stops mobile rubber-band/
+  pull-to-refresh from fighting the fixed-height screen. The placeholder
+  screens (`/how-to-play`, `/leaderboard`) follow the same fixed-height +
+  clamp-padding pattern.
 - The jungle client is split for focus: `src/game/jungle-game.ts` is the thin
   boot (dynamic `await import("phaser")` + game config) and the scene lives
   in `src/game/scene/` — `scene/index.ts` builds the scene config by wiring

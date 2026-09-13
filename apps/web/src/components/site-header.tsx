@@ -30,7 +30,7 @@ function BrandMark() {
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6 short:h-12">
         <Link
           href="/"
           className="group inline-flex items-center gap-2.5 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"

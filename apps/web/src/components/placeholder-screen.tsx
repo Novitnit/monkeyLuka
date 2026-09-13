@@ -19,10 +19,10 @@ export function PlaceholderScreen({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="relative flex h-dvh flex-col overflow-hidden">
       <SiteHeader />
 
-      <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 py-16 sm:px-6 sm:py-24 compact:py-3">
+      <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 py-[clamp(0.5rem,3vh,6rem)] sm:px-6 compact:py-3">
         <AmbientBackdrop />
 
         <section className="animate-rise relative w-full max-w-2xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.03] px-6 py-14 text-center shadow-[0_30px_90px_-24px_rgba(0,0,0,0.7)] backdrop-blur-md sm:px-14 sm:py-16 compact:rounded-2xl compact:px-5 compact:py-4">

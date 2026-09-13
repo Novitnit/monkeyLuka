@@ -241,7 +241,7 @@ export function PlayScreen() {
   // phase — menu, reconnect, or game — takes over.
   if (!booted || phase === "resuming") {
     return (
-      <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-zinc-950">
+      <div className="relative flex h-dvh flex-col items-center justify-center overflow-hidden bg-zinc-950">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/90 px-5 py-3 text-sm font-semibold text-zinc-200">
           <span className="inline-block size-4 animate-spin rounded-full border-2 border-amber-300/30 border-t-amber-300" />
           {booted ? "Reconnecting…" : "Loading…"}
@@ -257,7 +257,7 @@ export function PlayScreen() {
         <button
           type="button"
           onClick={exitToMenu}
-          className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 rounded-full border border-white/10 bg-zinc-950/70 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:border-amber-300/40 hover:text-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+          className="absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-10 inline-flex items-center gap-2 rounded-full border border-white/10 bg-zinc-950/70 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:border-amber-300/40 hover:text-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
         >
           ← Exit
         </button>
@@ -265,8 +265,14 @@ export function PlayScreen() {
     );
   }
 
+  // The menu is a fixed viewport-height screen (h-dvh, overflow hidden) —
+  // on mobile it must never scroll vertically, and there's no scrolling to
+  // fall back on, so the chrome and card are sized to fit: the header
+  // compacts on short landscape phones (short:h-12 in SiteHeader) and the
+  // card tightens/shrinks (short/micro tiers in PlayMenu). The card keeps
+  // its own "← Back to the menu" escape regardless.
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-hidden">
+    <div className="relative flex h-dvh flex-col overflow-hidden">
       <SiteHeader />
 
       <PlayMenu onPlay={openDialog} />

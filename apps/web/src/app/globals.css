@@ -7,6 +7,19 @@
    treatment so nothing spills off-screen. */
 @custom-variant compact (@media (max-height: 560px));
 
+/* Tightest landscape phones (≤440px tall — e.g. 640×360 and below) and
+   short desktop windows. Stacks on top of `compact` and trims the game
+   page's pre-game chrome further so the /play menu fits the viewport with
+   no vertical scrolling: the site header compacts and the menu card
+   tightens. */
+@custom-variant short (@media (max-height: 440px));
+
+/* Ultra-short landscape screens (≤312px tall — fold-cover phones held
+   sideways). The menu card visually shrinks so it still fits under the
+   compact header with nothing cropped; only used where the header would
+   otherwise push the card off-screen. */
+@custom-variant micro (@media (max-height: 312px));
+
 /* monkeyLuka is a dark, game-first UI — no auto light/dark flip. */
 :root {
   color-scheme: dark;
@@ -42,6 +55,11 @@ body {
     );
   background-attachment: fixed;
   color: var(--foreground);
+  /* Fullscreen mobile game page: never let the browser rubber-band /
+     overscroll the document past the viewport (pull-to-refresh etc.) —
+     the page is deliberately sized to the viewport (h-dvh, overflow
+     hidden), so nothing may scroll-chained into it. */
+  overscroll-behavior: none;
 }
 
 ::selection {
