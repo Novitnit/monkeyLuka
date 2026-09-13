@@ -1,4 +1,16 @@
 /**
+ * A question currently out to a player, awaiting its `quest:answer`. The
+ * correct index is the answer key: it lives only here on the server, and
+ * grading compares the client's reported choice against it.
+ */
+export interface QuestPending {
+  /** Index of the correct choice within the shuffled choices that were sent. */
+  correctIndex: number;
+  /** How many choices the player received (bounds the reported answer). */
+  choiceCount: number;
+}
+
+/**
  * Per-connected-client bookkeeping for the client-authoritative model: the
  * client simulates its own movement and the room only validates the reports
  * it sends. `lastValid` is the most recent report that passed validation —
@@ -16,6 +28,8 @@ export interface ServerPlayer {
   lastValidAt: number;
   /** Count of teleport/speed/flood violations before the kick threshold. */
   violations: number;
+  /** The question currently out to this player, if any (one at a time). */
+  pendingQuest: QuestPending | null;
 }
 
 /** The `PlayerInfo` fields the room relays from one accepted report. */

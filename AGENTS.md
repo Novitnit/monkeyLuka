@@ -215,10 +215,10 @@ boundary, because the signpost's base is flush with the standing floor's
 top, i.e. in the cell above the feet) and only runs the action when the
 gids agree AND the accepted report is grounded, so a forged or stale press
 is a no-op. Actions resolve from the shared `INTERACTION_TILE_ACTIONS`
-registry (315 → "showquest", currently just a server-side log via
-`runInteraction` in `apps/server/src/rooms/jungle/interactions.ts` — e.g.
-`[jungle:interaction] <name> (<sessionId>) showquest`); the quest UI the
-action will drive is the next step. The
+registry (315 → `"showquest"`): `runInteraction` in
+`apps/server/src/rooms/jungle/interactions.ts` sends the player a random
+question from `Assets/question.json` with its choices **shuffled and
+unlabeled** — see the quest bullet below. The
 Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
@@ -240,6 +240,35 @@ the player back to its checkpoint (starting at the spawn point) through a
 `PLAYER_CHECKPOINT_MESSAGE` the room always accepts (its target is the
 server-chosen spawn, so it can't bypass the anti-cheat) — only the R key
 itself is debug-gated, on the web side.
+
+**Quest questions (showquest)**: pressing E on the 315 signpost (see the
+interaction bullet above) no longer logs — the server sends that player a
+question. The room loads `Assets/question.json` at creation
+(`apps/server/src/game/quest-bank.ts`; env `JUNGLE_QUESTIONS_PATH` override),
+`showquest` picks a uniform-random question (`pickRandomQuestion`) and
+shuffles its choices with a Fisher–Yates that tracks the correct index
+(`shuffleChoices`) — the key stays server-side in the player's
+`pendingQuest` slot (one unanswered question per player at a time: repeat
+presses are dropped until the answer is graded, and `onReconnect` clears a
+stale slot, so a reloaded player's signpost still works). The client only
+ever receives `quest:question` `{question, choices}` — the raw plain-text
+strings, never the answer key — shows them in a screen-fixed modal box
+(`apps/web/src/game/quest/quest-box.ts`, click a row — mouse only, the
+row order is the shuffle) and
+reports `quest:answer` `{choice}`; the room sanitizes + bounds the index by
+the sent `choiceCount`, grades it against the secret `correctIndex`, and
+replies `quest:result` `{correct}` (Correct!/Wrong, then the box closes;
+it also closes itself 3s after an unanswered answer so a blip can't wedge
+the player). The choices are displayed unlabeled and in the shuffled order,
+so no visual number or position leaks the file's answer key. The client
+typesets the ASCII math (`d((x^5))/dx`, `5x^4`, `1/e^x`) with the shared
+parser (`packages/shared/src/math/`, pure + unit-tested) walking into a
+Phaser layout engine (`apps/web/src/game/quest/math-format.ts`, malformed
+strings fall back to plain text): fractions render as numerator over a rule
+over the denominator, `^` as a raised superscript, `-` as −, an explicit
+`*` as a middle dot, and implicit multiplication as juxtaposition. The box
+is modal: `state.questOpen` freezes the player's movement input and the E
+key while it's up.
 
 **Reconnection**: a dropped client (page reload, tab close, network blip)
 holds its seat + world entry for `RECONNECT_GRACE_SECONDS` (default 30,

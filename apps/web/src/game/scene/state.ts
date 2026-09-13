@@ -36,6 +36,12 @@ export interface JungleSceneState {
   keyW: Phaser.Input.Keyboard.Key | null;
   /** E: trigger the interaction tile under the feet (see update.ts). */
   keyE: Phaser.Input.Keyboard.Key | null;
+  /**
+   * True while the quest question box is on screen. While open the player's
+   * movement input and the interaction key are ignored (modal) — see
+   * update.ts. Set by `quest/quest-box.ts`.
+   */
+  questOpen: boolean;
   /** Debug only (isDebugEnabled): R teleports back here. */
   checkpoint: { x: number; y: number };
   keyR: Phaser.Input.Keyboard.Key | null;
@@ -67,6 +73,7 @@ export function createJungleSceneState(): JungleSceneState {
     keyD: null,
     keyW: null,
     keyE: null,
+    questOpen: false,
     checkpoint: { x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y },
     keyR: null,
     checkpointPending: false,

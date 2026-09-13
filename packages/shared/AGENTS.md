@@ -104,7 +104,8 @@ or Colyseus imports — so it can also be unit-tested directly.
   calls it every frame to gate the automatic checkpoint return on 464
   touch); `gridPixelSize` for world bounds.
 - Interaction tiles (315): `INTERACTION_TILE_ACTIONS` maps an interaction
-  gid → action id (315 → `"showquest"`); `buildInteractionGrid(layer)` →
+  gid → action id (315 → `"showquest"` — the server sends the player a
+  random question from `Assets/question.json`, see the quest bullet below); `buildInteractionGrid(layer)` →
   `InteractionGrid` (same dims/layer as the collision grid, only
   registered gids kept, 0 = inert); `interactionTileUnderFeet(grid, x, y,
   height)` is the E-key probe — it reads the cell under the AABB's bottom
@@ -207,6 +208,31 @@ the server is the only writer, and it writes accepted client reports
 building this are written up in
 `discoveries/jungle-grounded-persists-off-ledge.md` and
 `discoveries/jungle-anticheat-flags-grounded-players.md`.
+
+## Quest questions & math notation (`src/quest.ts`, `src/math/`)
+
+Non-physics exports alongside the schemas, kept framework-agnostic:
+
+- `src/quest.ts` — the quest wire contract. `QUEST_QUESTION_MESSAGE`
+  (server→client, `{question, choices}`: the raw plain-text question +
+  its already-shuffled choice strings), `QUEST_ANSWER_MESSAGE`
+  (client→server, `{choice}`: an index into the sent choices), and
+  `QUEST_RESULT_MESSAGE` (server→client, `{correct}`). The correct choice
+  index is never part of any message — grading happens server-side against
+  the shuffled order the room sent (see `apps/server/.../quest-bank.ts` +
+  the room's `onQuestAnswer`).
+- `src/math/` — `parseMathExpression(input)` → `MathExpr | null`: a tiny
+  recursive-descent parser that turns the bank's ASCII math
+  (`d((x^5))/dx`, `5x^4`, `1/e^x`) into a typed AST (`num`/`ident`/
+  `apply`/`paren`/`unary`/`binary`/`sup`/`seq`). Rendering semantics it
+  encodes: `seq` = implicit multiplication (juxtaposition), `binary *` =
+  an explicit star (typeset as a middle dot), `binary /` = a fraction,
+  `apply` wraps its arg in parens but doesn't double-wrap an already-
+  parenthesized arg (`d((x^5))` → `d(x⁵)`), `sup` = a raised exponent.
+  Malformed input returns null (the renderer falls back to plain text).
+  The AST is consumed only by the web client's Phaser typesetter
+  (`apps/web/src/game/quest/math-format.ts`), but it lives here because
+  it's pure and unit-tested (`src/math/parse.test.ts`, run by `bun test`).
 
 ## Commands
 

@@ -159,9 +159,20 @@ registered.
    last-accepted position (just stepped onto the tile, report not yet
    accepted) is a harmless no-op until the next accepted report lands on it.
 3. The action then runs in `interactions.ts` (`runInteraction`): a gid →
-   handler map where the actual effects live. `showquest` currently logs
-   `[jungle:interaction] <name> (<sessionId>) showquest`; real quest actions
-   are the next step. New interaction tiles = a registry entry in
+   handler map where the actual effects live. `showquest` sends the player a
+   random question from the bank loaded at `onCreate` from
+   `Assets/question.json` (`src/game/quest-bank.ts`, env
+   `JUNGLE_QUESTIONS_PATH`): `pickRandomQuestion` + a Fisher–Yates
+   `shuffleChoices` that tracks the correct index — **the key only ever
+   lives in `ServerPlayer.pendingQuest`** (one unanswered question per
+   player: a repeat press while pending is dropped, and `onReconnect`
+   clears the slot so a reloaded player's signpost still works). The player
+   gets `quest:question` `{question, choices}` (raw plain text, shuffled,
+   no answer key); `onQuestAnswer` (registering `QUEST_ANSWER_MESSAGE` in
+   `onCreate`) sanitizes the reported index (`sanitizeQuestAnswer`),
+   bounds it by the sent `choiceCount`, grades it against the secret
+   `correctIndex`, clears the slot, and replies `quest:result` `{correct}`.
+   New interaction tiles = a registry entry in
    `packages/shared/.../interaction.ts` + a handler in `interactions.ts` + the
    gid placed in the map.
 

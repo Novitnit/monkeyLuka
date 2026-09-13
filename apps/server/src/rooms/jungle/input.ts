@@ -9,6 +9,7 @@ import {
   isInteractionTileGid,
   type PlayerInputMessage,
   type PlayerInteractionMessage,
+  type QuestAnswerMessage,
 } from "@monkeyluka/shared";
 
 /** Strict shape check of the wire payload; null when it looks forged. */
@@ -75,4 +76,21 @@ export function sanitizePlayerInteraction(
   const gid = Math.trunc(m.gid);
   if (!isInteractionTileGid(gid)) return null;
   return { gid };
+}
+
+/**
+ * Strict shape check of the `QUEST_ANSWER_MESSAGE` payload; null when it
+ * looks forged. `choice` must be a finite, whole, non-negative number — the
+ * upper bound (how many choices the player was sent) is checked in the room,
+ * where the pending question's `choiceCount` lives.
+ */
+export function sanitizeQuestAnswer(
+  message: unknown,
+): QuestAnswerMessage | null {
+  if (typeof message !== "object" || message === null) return null;
+  const m = message as Record<string, unknown>;
+  if (typeof m.choice !== "number" || !Number.isFinite(m.choice)) return null;
+  const choice = Math.trunc(m.choice);
+  if (choice < 0) return null;
+  return { choice };
 }

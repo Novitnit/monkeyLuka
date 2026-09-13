@@ -10,6 +10,8 @@
 import { schema, t } from "@colyseus/schema";
 
 export * from "./physics";
+export * from "./math";
+export * from "./quest";
 
 export const APP_NAME = "monkeyLuka";
 

@@ -54,16 +54,25 @@ export function createSceneUpdate(
       return;
     }
 
-    // --- Read input (edge-triggered jump). ---
-    const left = Boolean(state.cursors?.left.isDown || state.keyA?.isDown);
-    const right = Boolean(state.cursors?.right.isDown || state.keyD?.isDown);
-    const jumpPressed = Boolean(
-      (state.cursors &&
-        phaser.Input.Keyboard.JustDown(state.cursors.up)) ||
-        (state.cursors &&
-          phaser.Input.Keyboard.JustDown(state.cursors.space)) ||
-        (state.keyW && phaser.Input.Keyboard.JustDown(state.keyW)),
-    );
+    // --- Read input (edge-triggered jump). The quest box is modal: while a
+    // question is up the player answers instead of moving, so movement input
+    // (and the E interaction below) is ignored and the reports just keep the
+    // standing prediction flowing. ---
+    const left = state.questOpen
+      ? false
+      : Boolean(state.cursors?.left.isDown || state.keyA?.isDown);
+    const right = state.questOpen
+      ? false
+      : Boolean(state.cursors?.right.isDown || state.keyD?.isDown);
+    const jumpPressed = state.questOpen
+      ? false
+      : Boolean(
+          (state.cursors &&
+            phaser.Input.Keyboard.JustDown(state.cursors.up)) ||
+            (state.cursors &&
+              phaser.Input.Keyboard.JustDown(state.cursors.space)) ||
+            (state.keyW && phaser.Input.Keyboard.JustDown(state.keyW)),
+        );
 
     // --- Interaction tiles: standing on one and pressing E triggers its
     // action on the server. The client probes its OWN predicted feet cell
@@ -71,8 +80,11 @@ export function createSceneUpdate(
     // advisory — the room re-probes its last accepted position with the
     // same shared rule before running the action, so a stale or forged
     // press is a no-op. Edge-triggered (JustDown), and only while grounded
-    // (standing on the tile, not jumping through it). ---
+    // (standing on the tile, not jumping through it). Skipped while the
+    // quest box is open — the room also drops repeat showquests while one
+    // is pending, so a stray E can't swap the question mid-answer. ---
     if (
+      !state.questOpen &&
       state.keyE &&
       player.physics.grounded &&
       phaser.Input.Keyboard.JustDown(state.keyE)

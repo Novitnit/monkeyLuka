@@ -1,5 +1,5 @@
 {
-    "total_questions": "100",
+    "total_questions": "5",
     "questions": [
         {
             "question": "d((x^5))/dx",
@@ -10,6 +10,46 @@
                 "4": "x^4"
             },
             "answer": "1"
+        },
+        {
+            "question": "d((3x^2))/dx",
+            "choices": {
+                "1": "3x",
+                "2": "6x",
+                "3": "6x^2",
+                "4": "3"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "d((sin(x)))/dx",
+            "choices": {
+                "1": "-cos(x)",
+                "2": "cos(x)",
+                "3": "-sin(x)",
+                "4": "tan(x)"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "d((e^x))/dx",
+            "choices": {
+                "1": "e^x",
+                "2": "x * e^(x-1)",
+                "3": "ln(x)",
+                "4": "1/e^x"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "d((ln(x)))/dx",
+            "choices": {
+                "1": "e^x",
+                "2": "1/x",
+                "3": "x",
+                "4": "-1/x"
+            },
+            "answer": "2"
         }
     ]
 }

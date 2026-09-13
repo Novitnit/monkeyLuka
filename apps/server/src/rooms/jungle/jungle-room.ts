@@ -7,6 +7,8 @@ import {
   PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
   PLAYER_INTERACTION_MESSAGE,
+  QUEST_ANSWER_MESSAGE,
+  QUEST_RESULT_MESSAGE,
   PlayerInfo,
   createPlayerState,
   interactionTileUnderFeet,
@@ -14,7 +16,16 @@ import {
   type JungleRoomState,
 } from "@monkeyluka/shared";
 import { loadJungleMap, type JungleMapData } from "../../game/jungle-map";
-import { clampVelocity, sanitizePlayerInput, sanitizePlayerInteraction } from "./input";
+import {
+  loadJungleQuestions,
+  type JungleQuestionBank,
+} from "../../game/quest-bank";
+import {
+  clampVelocity,
+  sanitizePlayerInput,
+  sanitizePlayerInteraction,
+  sanitizeQuestAnswer,
+} from "./input";
 import { runInteraction } from "./interactions";
 import { writeIfChanged } from "./schema-write";
 import type { ServerPlayer } from "./server-player";
@@ -53,10 +64,12 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   override maxClients = 20;
 
   private map!: JungleMapData;
+  private quests!: JungleQuestionBank;
   private readonly sim = new Map<string, ServerPlayer>();
 
   override async onCreate(): Promise<void> {
     this.map = await loadJungleMap();
+    this.quests = await loadJungleQuestions();
     this.state = new JungleState();
     if(debug){ console.log(`Room ${this.roomId} created`) }
     this.onMessage(PLAYER_INPUT_MESSAGE, (client, message: unknown) => {
@@ -64,6 +77,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     });
     this.onMessage(PLAYER_INTERACTION_MESSAGE, (client, message: unknown) => {
       this.onPlayerInteraction(client, message);
+    });
+    this.onMessage(QUEST_ANSWER_MESSAGE, (client, message: unknown) => {
+      this.onQuestAnswer(client, message);
     });
     this.onMessage(PLAYER_CHECKPOINT_MESSAGE, (client) => {
       this.onCheckpointReturn(client);
@@ -93,6 +109,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       },
       lastValidAt: 0,
       violations: 0,
+      pendingQuest: null,
     });
 
     const info = new PlayerInfo({
@@ -150,6 +167,11 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       player.lastSeq = -1;
       player.inputStamps = [];
       player.lastValidAt = 0;
+      // A reconnected page or socket has no live quest box: drop any pending
+      // question so a future showquest can send a fresh one (the client also
+      // closes a box that never gets its result, so a blip mid-answer still
+      // self-heals on the next press).
+      player.pendingQuest = null;
     }
   }
 
@@ -231,7 +253,33 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     runInteraction(payload.gid, {
       sessionId: client.sessionId,
       name: info?.name ?? client.sessionId,
+      send: (type, body) => client.send(type, body),
+      quests: this.quests,
+      questPending: player.pendingQuest !== null,
+      setQuestPending: (pending) => {
+        player.pendingQuest = pending;
+      },
     });
+  }
+
+  /**
+   * Grade a question the player was sent by a `showquest` interaction. Only
+   * runs when a question is actually pending for this player (a forged or
+   * stray answer is a no-op), and the reported choice is bounded by the
+   * `choiceCount` that was sent. The correct index is compared server-side
+   * and only the boolean result leaves the room, so the client can't learn
+   * the key by probing answers.
+   */
+  private onQuestAnswer(client: Client, message: unknown): void {
+    const player = this.sim.get(client.sessionId);
+    if (!player?.pendingQuest) return;
+
+    const payload = sanitizeQuestAnswer(message);
+    if (!payload || payload.choice >= player.pendingQuest.choiceCount) return;
+
+    const correct = payload.choice === player.pendingQuest.correctIndex;
+    player.pendingQuest = null;
+    client.send(QUEST_RESULT_MESSAGE, { correct });
   }
 
   private removePlayer(sessionId: string): void {

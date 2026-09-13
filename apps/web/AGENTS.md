@@ -168,7 +168,25 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   grid reads, and sends `PLAYER_INTERACTION_MESSAGE` with the found gid.
   The sent `gid` is advisory only: the room re-probes its own last accepted
   position with the same rule before running the action, so a stale/forged
-  press is a no-op. 315 → "showquest" (currently just a server-side log).
+  press is a no-op. 315 → "showquest" opens the **quest box**
+  (`src/game/quest/`): the room sends `quest:question` `{question,
+  choices}` (a random question from `Assets/question.json`, choices
+  shuffled + unlabeled server-side — the answer key never reaches the
+  client, so no number or position leaks it), and `quest-box.ts` renders it
+  as a screen-fixed modal — the question and each choice typeset
+  mathematically by `math-format.ts` from the shared parser
+  (`@monkeyluka/shared` `parseMathExpression` → `MathExpr`): fractions
+  stack numerator over a rule over the denominator, `^` becomes an
+  superscript, `-` renders as −, explicit `*` as a middle dot, implicit
+  multiplication as juxtaposition; malformed strings fall back to plain
+  text. The player answers by clicking a row (mouse only — no on-screen
+  numbers: the row order is the shuffle, and a number key would be an
+  unlabeled guess); `quest:answer` `{choice}` is
+  graded server-side and `quest:result` `{correct}` flashes
+  Correct!/Wrong before the box auto-closes. While the box is up it is
+  modal: `state.questOpen` freezes movement input and the E key in
+  `scene/update.ts`, and the box closes itself 3s after an unanswered
+  answer (a blip can't wedge the player in the modal).
 
 - **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's
   `reconnectionToken` + name in **sessionStorage** (survives reloads, not tab

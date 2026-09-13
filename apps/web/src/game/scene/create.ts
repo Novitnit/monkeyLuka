@@ -31,6 +31,7 @@ import {
 } from "../player/animations";
 import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
+import { createQuestBox } from "../quest/quest-box";
 import type { JungleGameOptions, JungleRoom } from "../jungle-game";
 import { MAP_DIR, MAP_FILE, PLAYER_DIR } from "./constants";
 import {
@@ -189,6 +190,13 @@ export function createSceneCreate(
           state.keyR = isDebugEnabled()
             ? keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.R) ?? null
             : null;
+
+          // The quest question box (showquest interaction): screen-fixed
+          // modal that listens for `quest:question` on the room and returns
+          // the player's answer via `quest:answer`. Independent of the map,
+          // so it can be created once here.
+          const questBox = createQuestBox(this, room, state);
+          setDebugHandle("__jungleQuest", questBox);
         } catch (err) {
           console.error("Failed to load the jungle map:", err);
         }
