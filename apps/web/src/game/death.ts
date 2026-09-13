@@ -7,7 +7,10 @@
  * added here without touching the update loop.
  */
 
-import { PLAYER_CHECKPOINT_MESSAGE } from "@monkeyluka/shared";
+import {
+  PLAYER_CHECKPOINT_MESSAGE,
+  PLAYER_DEATH_MESSAGE,
+} from "@monkeyluka/shared";
 import type { JungleRoom } from "./jungle-game";
 import type { Player } from "./player/player";
 import type { JungleSceneState } from "./scene/state";
@@ -21,15 +24,16 @@ export type DeathCause = "dead-zone";
 
 /**
  * Kills the player with `cause` and runs the death behaviors. Called once
- * per death — the update loop's `checkpointPending` guard keeps it from
- * re-firing while a return is already in flight.
+ * per death — the update loop's `dead` guard keeps it from re-firing while
+ * a death is in progress.
  *
- * Today every cause shares one behavior: return to the checkpoint through
- * `PLAYER_CHECKPOINT_MESSAGE`, the exact flow the debug R key uses
- * (teleport locally, freeze reconciliation until the server confirms, and
- * let the room re-baseline at the spawn so the jump isn't a teleport
- * violation). The switch is the extension point: a new death behavior —
- * or a new cause — lands as a case here.
+ * Today every cause shares one behavior: the player is frozen where they
+ * fell (the `dead` flag gates movement input, see update.ts) and the room
+ * is asked for a death question (`PLAYER_DEATH_MESSAGE`). The quest box's
+ * death mode then runs the retry loop: a wrong answer freezes the player
+ * for 3 seconds before a fresh question is requested; a correct answer
+ * calls `revivePlayer`. The switch is the extension point — a new death
+ * behavior — or a new cause — lands as a case here.
  */
 export function onDead(
   player: Player,
@@ -42,6 +46,15 @@ export function onDead(
       player.teleportTo(state.checkpoint.x, state.checkpoint.y);
       state.checkpointPending = true;
       room.send(PLAYER_CHECKPOINT_MESSAGE, {});
+      state.dead = true;
+      state.deathRequestAt = Date.now();
+      room.send(PLAYER_DEATH_MESSAGE, {});
       return;
   }
+}
+
+export function revivePlayer(
+  state: JungleSceneState,
+): void {
+  state.dead = false;
 }

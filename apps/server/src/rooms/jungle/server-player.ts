@@ -1,21 +1,39 @@
-/**
- * A question currently out to a player, awaiting its `quest:answer`. The
- * correct index is the answer key: it lives only here on the server, and
- * grading compares the client's reported choice against it. `tx`/`ty` are
- * the interaction tile that asked the question — a correct answer marks
- * THAT signpost completed (it can't be asked again) and feeds the
- * door-opening gate.
- */
-export interface QuestPending {
+import type { QuestQuestionKind } from "@monkeyluka/shared";
+
+/** Common fields of a question currently out to a player. */
+interface QuestPendingBase {
+  /** Where the question came from; gates grading (see the room's quest:answer handler). */
+  kind: QuestQuestionKind;
   /** Index of the correct choice within the shuffled choices that were sent. */
   correctIndex: number;
   /** How many choices the player received (bounds the reported answer). */
   choiceCount: number;
+}
+
+/**
+ * An interaction-tile question (showquest): `tx`/`ty` are the signpost that
+ * asked — a correct answer marks THAT tile completed (it can't be asked
+ * again) and feeds the door-opening gate.
+ */
+export interface InteractionQuestPending extends QuestPendingBase {
+  kind: "interaction";
   /** Grid column of the interaction tile the question came from. */
   tx: number;
   /** Grid row of the interaction tile the question came from. */
   ty: number;
 }
+
+/** A death question: a correct answer just revives the player. */
+export interface DeathQuestPending extends QuestPendingBase {
+  kind: "death";
+}
+
+/**
+ * A question currently out to a player, awaiting its `quest:answer`. The
+ * correct index is the answer key: it lives only here on the server, and
+ * grading compares the client's reported choice against it.
+ */
+export type QuestPending = InteractionQuestPending | DeathQuestPending;
 
 /**
  * Per-connected-client bookkeeping for the client-authoritative model: the

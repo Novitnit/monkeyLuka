@@ -70,6 +70,26 @@ export interface JungleSceneState {
    * update.ts. Set by `quest/quest-box.ts`.
    */
   questOpen: boolean;
+  /**
+   * True from the moment the player dies (dead-zone pit touch, see onDead
+   * in death.ts) until its death question is answered correctly. Freezes
+   * movement input like `questOpen` (and gates the E/R keys and the pit
+   * probe, see update.ts) so the death flow runs exactly once; cleared by
+   * `revivePlayer` in death.ts.
+   */
+  dead: boolean;
+  /**
+   * Last time a death-question request (`PLAYER_DEATH_MESSAGE`) went out.
+   * Throttles the update loop's self-heal re-request — a dead player with
+   * no question box up re-asks at most once per second (see update.ts).
+   */
+  deathRequestAt: number;
+  /**
+   * True once a connection drop is observed, cleared on the first frame
+   * after it reopens. Used to re-send a checkpoint return whose message may
+   * have been lost mid-flight (see the reconnect heal in update.ts).
+   */
+  connectionWasDown: boolean;
   /** Debug only (isDebugEnabled): R teleports back here. */
   checkpoint: { x: number; y: number };
   keyR: Phaser.Input.Keyboard.Key | null;
@@ -105,6 +125,9 @@ export function createJungleSceneState(): JungleSceneState {
     keyW: null,
     keyE: null,
     questOpen: false,
+    dead: false,
+    deathRequestAt: 0,
+    connectionWasDown: false,
     checkpoint: { x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y },
     keyR: null,
     checkpointPending: false,

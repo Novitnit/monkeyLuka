@@ -1,22 +1,33 @@
 /**
  * The quest question box: a screen-fixed modal that appears when the server
- * sends `quest:question` (from a showquest interaction) and typesets the
- * question + its shuffled choices mathematically (see `math-format.ts`).
+ * sends `quest:question` and typesets the question + its shuffled choices
+ * mathematically (see `math-format.ts`).
  *
- * Interaction: click a choice row (mouse pointer); the picked index goes
- * back to the room (`quest:answer`), which grades it server-side (the
- * correct index never reaches the client) and replies `quest:result` — the
- * box then
- * flashes "Correct!"/"Wrong" and auto-closes. While the box is open the
- * player's movement input is frozen (`state.questOpen`; see update.ts), and
- * the server drops any new showquest until this one is answered, so a
- * repeated E can't swap the question out mid-answer.
+ * Two question kinds ride the same message (`kind`):
+ *
+ * - **interaction** (showquest signpost): click a choice row (mouse
+ *   pointer); the picked index goes back to the room (`quest:answer`),
+ *   which grades it server-side (the correct index never reaches the
+ *   client) and replies `quest:result` — the box then flashes
+ *   "Correct!"/"Wrong" and auto-closes.
+ * - **death** (dead-zone pit, see death.ts): a wrong answer holds "Wrong"
+ *   on screen for 3 seconds (questOpen keeps the player frozen — the
+ *   penalty), then the box closes and update.ts's self-heal re-requests a
+ *   fresh death question; this repeats until a correct answer, which
+ *   revives the player through the checkpoint flow (`revivePlayer`).
+ *
+ * While the box is open the player's movement input is frozen
+ * (`state.questOpen`; see update.ts), and the server drops any new showquest
+ * until the current question is answered, so a repeated E can't swap the
+ * question out mid-answer (death questions are likewise one-at-a-time via
+ * the pending slot).
  *
  * Edge cases: if no result ever arrives (the answer was lost in a network
  * blip — the room cleared the pending question on reconnect), the box closes
- * itself 3s after answering so the player is never stuck in the modal; the
- * server's `onReconnect` also clears its pending slot so the next E sends a
- * fresh question.
+ * itself 3s after answering so the player is never stuck in the modal; an
+ * interaction question just ends there, while a death question's close
+ * hands control back to update.ts's self-heal, which re-requests a fresh
+ * question.
  */
 
 import type Phaser from "phaser";
@@ -24,7 +35,9 @@ import {
   QUEST_ANSWER_MESSAGE,
   QUEST_QUESTION_MESSAGE,
   QUEST_RESULT_MESSAGE,
+  type QuestQuestionKind,
 } from "@monkeyluka/shared";
+import { revivePlayer } from "../death";
 import type { JungleRoom } from "../jungle-game";
 import type { JungleSceneState } from "../scene/state";
 import { renderMathString } from "./math-format";
@@ -61,6 +74,7 @@ export function createQuestBox(
   // One question + its answer state at a time.
   let opened = false;
   let answered = false;
+  let kind: QuestQuestionKind = "interaction";
   let answerTimer: Phaser.Time.TimerEvent | null = null;
   let closeTimer: Phaser.Time.TimerEvent | null = null;
   const rows: Phaser.GameObjects.Rectangle[] = [];
@@ -120,6 +134,26 @@ export function createQuestBox(
       )
       .setOrigin(0.5, 0.5);
     container.add(feedback);
+
+    if (kind === "death") {
+      if (correct) {
+        // Revive through the checkpoint flow (player:checkpoint → the room
+        // re-baselines at the spawn). The "Correct!" flash stays up and
+        // questOpen keeps movement frozen until it closes; the body is
+        // already teleported, so the player simply walks away from spawn
+        // when the box drops.
+        if (state.player) revivePlayer(state);
+        closeTimer = scene.time.delayedCall(1400, close);
+      } else {
+        // The 3-second penalty: "Wrong" stays on screen (and the modal
+        // freezes movement) for 3s, then the box closes so update.ts's
+        // self-heal re-requests a fresh death question and re-opens it.
+        // Repeat until the player answers correctly — see death.ts.
+        closeTimer = scene.time.delayedCall(3000, close);
+      }
+      return;
+    }
+
     closeTimer = scene.time.delayedCall(1400, close);
   }
 
@@ -216,8 +250,13 @@ export function createQuestBox(
   // Server → client wiring. The room is authoritative; the shape checks are
   // just enough to keep malformed data from crashing the box.
   room.onMessage(QUEST_QUESTION_MESSAGE, (message: unknown) => {
-    const m = message as { question?: unknown; choices?: unknown };
+    const m = message as {
+      question?: unknown;
+      choices?: unknown;
+      kind?: unknown;
+    };
     if (typeof m.question !== "string" || !Array.isArray(m.choices)) return;
+    kind = m.kind === "death" ? "death" : "interaction";
     open(m.question, m.choices.filter((c): c is string => typeof c === "string"));
   });
   room.onMessage(QUEST_RESULT_MESSAGE, (message: unknown) => {

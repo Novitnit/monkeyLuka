@@ -76,8 +76,12 @@ describe("showquest interaction handler", () => {
     expect(reserved).not.toBeNull();
     expect(reserved!.choiceCount).toBe(4);
     expect(message.choices[reserved!.correctIndex]).toBeTypeOf("string");
-    // The interacted tile rides along, so the room can mark THAT signpost
-    // completed when the answer comes back correct.
+    // It is an interaction-tile question, and the interacted tile rides
+    // along, so the room can mark THAT signpost completed when the answer
+    // comes back correct.
+    if (reserved!.kind !== "interaction") {
+      throw new Error("expected an interaction-tile question");
+    }
     expect(reserved!.tx).toBe(17);
     expect(reserved!.ty).toBe(11);
   });

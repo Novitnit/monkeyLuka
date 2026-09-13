@@ -64,6 +64,7 @@ const INTERACTION_HANDLERS: Record<
     // room's grading uses it to mark THAT signpost completed on a correct
     // answer (and to open its linked doors when all are done).
     ctx.setQuestPending({
+      kind: "interaction",
       correctIndex,
       choiceCount: choices.length,
       tx: ctx.tile.tx,

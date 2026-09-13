@@ -187,8 +187,8 @@ dead-zone pit (a pixel-mask OPEN basin — a 3px solid base at the cell's
 bottom, nothing else, so a player walks off the mouth and sinks to the
 floor; adjacent 464s merge into one continuous trench and a body inside is
 blocked laterally only by the solid walls beside the run, so falling in is a
-trap — and now a one-way door: reaching the basin floor returns the player
-to its checkpoint automatically); the
+trap — a one-way door: reaching the basin floor kills the player, who
+**cannot leave the pit unless it answers a death question correctly**. The
 web client probes its own simulated position against the pits every frame
 (`isBoxInDeadZone` on the shared grid — the AABB must overlap the pit cell
 with its bottom at/within 1px above the basin-floor base, so a player
@@ -196,13 +196,31 @@ standing on it, or falling into it, touches, while a player on the ground
 beside a pit, or flying high over the mouth, never touches) and, on touch,
 **kills the player** — the scene hands the kill to `onDead`
 (`apps/web/src/game/death.ts`, dispatched per `DeathCause`; the update loop
-only calls it once per death via the `checkpointPending` guard), which for
-now runs one behavior: return to the checkpoint through the exact
+only calls it once per death via the `dead` guard), which freezes the body
+where it fell (`state.dead` gates movement input + the E/R keys, like the
+quest modal, and gates the pit probe so the kill doesn't re-fire) and asks
+the room for a death question (`PLAYER_DEATH_MESSAGE`; the room sends a
+random question with `kind: "death"` on the same `quest:question` channel,
+unlike a showquest press it never touches the completion gate — grading
+stays server-side with the key in the player's pending slot). The quest box
+then runs the retry loop: a **wrong** answer holds "Wrong" on screen for 3
+seconds (movement stays frozen — the modal is still up) before the box
+closes and the update loop's self-heal re-requests a fresh death question
+(throttled to 1/s), **repeating until a correct answer**, which sends
+`quest:result {correct:true}` and revives through the exact
 `PLAYER_CHECKPOINT_MESSAGE` flow the debug R key uses (teleport locally,
 freeze reconciliation until the server confirms, and let the room
-re-baseline at the spawn so the jump isn't a teleport violation) — the
-death-behavior switch in `onDead` is the extension point for future death
-behaviors and causes. The
+re-baseline at the spawn so the jump isn't a teleport violation — reports
+sent from the pit before the revive are ordered before the checkpoint
+message on the wire, so the re-baselined server never sees them as a
+teleport). The death-behavior switch in `onDead` and the death-mode branch
+in the quest box (`quest-box.ts`, `kind === "death"`) are the extension
+points for future death behaviors and causes. If the WebSocket blips while a
+checkpoint return is in flight (a correct death answer just sent
+`player:checkpoint`), the update loop re-sends it once on the first frame
+back (`state.connectionWasDown`, see update.ts) — otherwise the server
+stays baselined at the pit and the first post-reconnect report reads as a
+teleport violation. The
 Colyseus room no longer probes or logs the pits, and the web
 debug overlay draws the pit outline RED (`hazard` collision segments). 315
 is the first **interaction tile** (a signpost in the map at tile (17, 11),

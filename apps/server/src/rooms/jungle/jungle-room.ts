@@ -6,9 +6,11 @@ import {
   JungleState,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_CHECKPOINT_MESSAGE,
+  PLAYER_DEATH_MESSAGE,
   PLAYER_INPUT_MESSAGE,
   PLAYER_INTERACTION_MESSAGE,
   QUEST_ANSWER_MESSAGE,
+  QUEST_QUESTION_MESSAGE,
   QUEST_RESULT_MESSAGE,
   PlayerInfo,
   clearDoorFromGrid,
@@ -23,6 +25,8 @@ import {
 import { loadJungleMap, type JungleMapData } from "../../game/jungle-map";
 import {
   loadJungleQuestions,
+  pickRandomQuestion,
+  shuffleChoices,
   type JungleQuestionBank,
 } from "../../game/quest-bank";
 import {
@@ -106,6 +110,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     });
     this.onMessage(QUEST_ANSWER_MESSAGE, (client, message: unknown) => {
       this.onQuestAnswer(client, message);
+    });
+    this.onMessage(PLAYER_DEATH_MESSAGE, (client) => {
+      this.onPlayerDeath(client);
     });
     this.onMessage(PLAYER_CHECKPOINT_MESSAGE, (client) => {
       this.onCheckpointReturn(client);
@@ -293,14 +300,47 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   }
 
   /**
-   * Grade a question the player was sent by a `showquest` interaction. Only
-   * runs when a question is actually pending for this player (a forged or
-   * stray answer is a no-op), and the reported choice is bounded by the
-   * `choiceCount` that was sent. The correct index is compared server-side
-   * and only the boolean result leaves the room, so the client can't learn
-   * the key by probing answers. A correct answer completes the interaction
-   * tile that asked (it can never be answered again) and — once every
-   * showquest linked to a door is done — opens that door for the whole room.
+   * A client reports its own death (dead-zone pit touch — detected by its
+   * local sim; the room never probes pits). The room can't verify the death
+   * (movement is client-simulated), but a forged report is harmless: the
+   * only effect is sending this player a death question, and survival still
+   * requires the correct answer plus the client-driven checkpoint flow
+   * (server-chosen spawn), so there is no anti-cheat bypass.
+   *
+   * One question at a time like `showquest`: a repeat death message while a
+   * question is already out is dropped, so a stuck cycle can't stack
+   * pendings. The client re-sends this message after a wrong answer's 3s
+   * penalty (and self-heals a lost question by re-sending it, throttled —
+   * see update.ts), so each retry gets a fresh random question with a fresh
+   * server-side answer key.
+   */
+  private onPlayerDeath(client: Client): void {
+    const player = this.sim.get(client.sessionId);
+    if (!player || player.pendingQuest) return;
+    const question = pickRandomQuestion(this.quests);
+    const { choices, correctIndex } = shuffleChoices(question);
+    player.pendingQuest = {
+      kind: "death",
+      correctIndex,
+      choiceCount: choices.length,
+    };
+    client.send(QUEST_QUESTION_MESSAGE, {
+      question: question.question,
+      choices,
+      kind: "death",
+    });
+  }
+
+  /**
+   * Grade a question the player was sent (by a `showquest` interaction or a
+   * death). Only runs when a question is actually pending for this player (a
+   * forged or stray answer is a no-op), and the reported choice is bounded by
+   * the `choiceCount` that was sent. The correct index is compared
+   * server-side and only the boolean result leaves the room, so the client
+   * can't learn the key by probing answers. A correct interaction answer
+   * completes the tile that asked and may open its linked doors; a correct
+   * death answer just means "revive" (the client runs the checkpoint flow
+   * itself) — completion state is never touched.
    */
   private onQuestAnswer(client: Client, message: unknown): void {
     const player = this.sim.get(client.sessionId);
@@ -310,7 +350,10 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     if (!payload || payload.choice >= player.pendingQuest.choiceCount) return;
 
     const correct = payload.choice === player.pendingQuest.correctIndex;
-    if (correct) {
+    // Only interaction-tile questions feed the completion gate: a correct
+    // death-question answer revives the player (client-driven checkpoint
+    // flow) and must not complete a signpost or open a door.
+    if (correct && player.pendingQuest.kind === "interaction") {
       for (const door of this.gate.markCompleted(
         player.pendingQuest.tx,
         player.pendingQuest.ty,

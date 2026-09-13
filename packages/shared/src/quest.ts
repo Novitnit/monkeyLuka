@@ -10,6 +10,19 @@
 /** Server → client: a question to display (choices already shuffled). */
 export const QUEST_QUESTION_MESSAGE = "quest:question";
 
+/**
+ * Client → server: the player died (dead-zone pit touch, detected by the
+ * client's local sim — the room never probes pits). The room answers with
+ * a random death question (`quest:question` with `kind: "death"`); the
+ * player must answer it correctly to revive. Forged reports are harmless:
+ * the only cost is a question, and survival still runs through the
+ * server-chosen checkpoint flow.
+ */
+export const PLAYER_DEATH_MESSAGE = "player:death";
+
+/** Where a question came from; the quest box treats death questions differently. */
+export type QuestQuestionKind = "interaction" | "death";
+
 /** Client → server: which choice the player picked (index into choices). */
 export const QUEST_ANSWER_MESSAGE = "quest:answer";
 
@@ -22,6 +35,12 @@ export interface QuestQuestionMessage {
   question: string;
   /** The answer choices, shuffled by the server (2+ entries). */
   choices: string[];
+  /**
+   * `"death"` for a death question (a wrong answer penalizes + retries
+   * until a correct answer revives the player). Interaction questions
+   * (showquest tiles) omit it — the client defaults to `"interaction"`.
+   */
+  kind?: QuestQuestionKind;
 }
 
 /** Payload of `QUEST_ANSWER_MESSAGE`. */

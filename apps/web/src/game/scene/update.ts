@@ -9,6 +9,7 @@ import type Phaser from "phaser";
 import {
   DEFAULT_PLAYER_PHYSICS,
   PLAYER_CHECKPOINT_MESSAGE,
+  PLAYER_DEATH_MESSAGE,
   PLAYER_INPUT_MESSAGE,
   PLAYER_INTERACTION_MESSAGE,
   interactionTileUnderFeet,
@@ -57,22 +58,40 @@ export function createSceneUpdate(
     // them looks exactly like a speed hack. Rendering continues so the
     // monkey stays visible where it stopped.
     if (!room.connection.isOpen) {
+      state.connectionWasDown = true;
       player.render(dt);
       syncRemotePlayers(this, room, state.remotePlayers, playerLayer, dt);
       return;
     }
 
+    // Reconnect heal: a drop may have swallowed a checkpoint return that was
+    // in flight (a correct death answer or a debug R press → the revive
+    // teleport). If the server never re-baselined at the spawn, the first
+    // post-reconnect report would read as a teleport and accrue violations
+    // toward a kick. Re-send the message once on the first frame back — if
+    // the original did arrive, the broadcast is already at the checkpoint
+    // and the re-send is an idempotent re-baseline.
+    if (state.connectionWasDown) {
+      state.connectionWasDown = false;
+      if (state.checkpointPending) {
+        room.send(PLAYER_CHECKPOINT_MESSAGE, {});
+      }
+    }
+
     // --- Read input (edge-triggered jump). The quest box is modal: while a
     // question is up the player answers instead of moving, so movement input
     // (and the E interaction below) is ignored and the reports just keep the
-    // standing prediction flowing. ---
-    const left = state.questOpen
+    // standing prediction flowing. Same while dead (`state.dead`, see
+    // death.ts): the body is frozen where it fell until its death question
+    // is answered correctly — no gravity-walk, no jump, no wall grab. ---
+    const frozen = state.questOpen || state.dead;
+    const left = frozen
       ? false
       : Boolean(state.cursors?.left.isDown || state.keyA?.isDown);
-    const right = state.questOpen
+    const right = frozen
       ? false
       : Boolean(state.cursors?.right.isDown || state.keyD?.isDown);
-    const jumpPressed = state.questOpen
+    const jumpPressed = frozen
       ? false
       : Boolean(
           (state.cursors &&
@@ -93,6 +112,7 @@ export function createSceneUpdate(
     // is pending, so a stray E can't swap the question mid-answer. ---
     if (
       !state.questOpen &&
+      !state.dead &&
       state.keyE &&
       player.physics.grounded &&
       phaser.Input.Keyboard.JustDown(state.keyE)
@@ -114,7 +134,7 @@ export function createSceneUpdate(
     // --- Debug: R returns to the checkpoint. Only registered when
     // NEXT_PUBLIC_DEBUG is on; the room's checkpoint handler re-baselines
     // its validation at the spawn so the jump isn't a violation. ---
-    if (state.keyR && phaser.Input.Keyboard.JustDown(state.keyR)) {
+    if (state.keyR && !state.dead && phaser.Input.Keyboard.JustDown(state.keyR)) {
       player.teleportTo(state.checkpoint.x, state.checkpoint.y);
       state.checkpointPending = true;
       room.send(PLAYER_CHECKPOINT_MESSAGE, {});
@@ -125,16 +145,31 @@ export function createSceneUpdate(
     player.setInput(input);
     player.update(dt);
 
+    // --- Death-question self-heal: a dead player with no question box up
+    // (the first question never arrived, a wrong answer's 3s penalty just
+    // ended, or a lost answer's safety net closed the box) re-requests one.
+    // Throttled to once per second so a broken cycle can't spam the room;
+    // the room drops a request while a question is already pending. ---
+    if (
+      state.dead &&
+      !state.questOpen &&
+      Date.now() - state.deathRequestAt >= 1000
+    ) {
+      state.deathRequestAt = Date.now();
+      room.send(PLAYER_DEATH_MESSAGE, {});
+    }
+
     // --- Dead zone (464 hazard pits): touching one KILLS the player — the
     // kill is handed to `onDead`, which runs the death behaviors for the
-    // cause (today: return to the checkpoint). The probe runs on the
-    // client's own simulated position (movement is client-simulated, and
-    // this wants the freshest spot — the broadcast snapshot is ~one RTT
-    // stale). `checkpointPending` guards against re-firing while a return
-    // is already in flight (the checkpoint is the server-chosen spawn, so
-    // it can't be forged past the anti-cheat). ---
+    // cause (today: freeze the body and ask for a death question; a correct
+    // answer revives it). The probe runs on the client's own simulated
+    // position (movement is client-simulated, and this wants the freshest
+    // spot — the broadcast snapshot is ~one RTT stale). `dead` guards
+    // against re-firing while a death is in progress, `checkpointPending`
+    // while a revive return is in flight. ---
     if (
       !state.checkpointPending &&
+      !state.dead &&
       isBoxInDeadZone(
         grid,
         player.physics.x,
