@@ -15,9 +15,11 @@ import {
   isBoxInDeadZone,
   type PlayerInput,
 } from "@monkeyluka/shared";
+import { onDead } from "../death";
 import { ROOM_HEIGHT, ROOM_WIDTH } from "../map/tiled-map";
 import { SNAP_DISTANCE } from "../player/player";
 import { syncRemotePlayers } from "../player/remote-players";
+import { syncOpenDoors } from "../door/door-open";
 import type { JungleRoom } from "../jungle-game";
 import { INPUT_INTERVAL_MS } from "./constants";
 import type { JungleSceneState } from "./state";
@@ -41,6 +43,12 @@ export function createSceneUpdate(
     if (!player || !grid || !playerLayer) return;
 
     const dt = Math.min(delta, 50) / 1000;
+
+    // Door state is authoritative and synced through the schema: reconcile
+    // any door the room opened into the local world (clear its collision
+    // cells, drop its debug perimeter) before simulating — the doorway
+    // must be passable this frame, not a frame later.
+    syncOpenDoors(room, state);
 
     // Connection dropped (SDK auto-reconnecting in the background): freeze
     // local simulation. The server has already stopped this player (no
@@ -117,14 +125,14 @@ export function createSceneUpdate(
     player.setInput(input);
     player.update(dt);
 
-    // --- Dead zone (464 hazard pits): touching one returns the player to
-    // its checkpoint. The probe runs on the client's own simulated position
-    // (movement is client-simulated, and this wants the freshest spot — the
-    // broadcast snapshot is ~one RTT stale), and it reuses the checkpoint
-    // message so the server re-baselines at the spawn instead of reading the
-    // jump as a teleport violation. `checkpointPending` guards against
-    // re-firing while a return is already in flight (the checkpoint is the
-    // server-chosen spawn, so it can't be forged past the anti-cheat). ---
+    // --- Dead zone (464 hazard pits): touching one KILLS the player — the
+    // kill is handed to `onDead`, which runs the death behaviors for the
+    // cause (today: return to the checkpoint). The probe runs on the
+    // client's own simulated position (movement is client-simulated, and
+    // this wants the freshest spot — the broadcast snapshot is ~one RTT
+    // stale). `checkpointPending` guards against re-firing while a return
+    // is already in flight (the checkpoint is the server-chosen spawn, so
+    // it can't be forged past the anti-cheat). ---
     if (
       !state.checkpointPending &&
       isBoxInDeadZone(
@@ -135,9 +143,7 @@ export function createSceneUpdate(
         DEFAULT_PLAYER_PHYSICS.height,
       )
     ) {
-      player.teleportTo(state.checkpoint.x, state.checkpoint.y);
-      state.checkpointPending = true;
-      room.send(PLAYER_CHECKPOINT_MESSAGE, {});
+      onDead(player, "dead-zone", room, state);
     }
 
     // --- Report the predicted state to the server (~20 Hz). Collision is

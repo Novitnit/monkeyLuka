@@ -58,7 +58,9 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   the shared physics for the local monkey and the `PlayerInfo` broadcast
   (`grounded`/`vx`) for remotes. Tiled loading lives in `src/game/map/tiled-map.ts`
   (engine-free: fetches `Assets/map/main.json` + `.tsx` tilesets via the
-  `public/map` symlink) with the tileset fetch/parse/image helpers in
+  `public/map` symlink, and parses the objectgroups — the `room` group's
+  annotations are the door links, see below) with the tileset
+  fetch/parse/image helpers in
   `src/game/map/tileset-loader.ts`; the Phaser rendering in
   `src/game/map/map-renderer.ts` (rooms are `ROOM_WIDTH`×`ROOM_HEIGHT` —
   480×272, exactly the designed rooms, cropped at room
@@ -118,10 +120,42 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   overlay so both slice the map into rooms identically.
   `src/game/collision/collision-debug.ts` draws those as a Phaser overlay (green
   vertical walls, blue horizontal floors, orange slopes, RED dead-zone pit
-  outlines via the `hazard` kind), toggleable via
+  outlines via the `hazard` kind, PURPLE door-entity perimeters — each
+  door's lines on their own graphics, so the overlay can drop an opened
+  door's perimeter via `CollisionDebug.hideDoor`), toggleable via
   `__jungleCollisionDebug.setEnabled(false)`; `createJungleGame` takes
   `{ collisionDebug?: boolean }` (defaults to the `NEXT_PUBLIC_DEBUG` flag —
   off unless it's "1"/"true").
+
+- **Door links, opening doors & their debug lines**: `tiled-map.ts` also
+  parses the map's objectgroups, and the `room` group's rectangles are
+  turned into door-link groups by `groupRoomObjectsByName` in
+  `@monkeyluka/shared`: each named
+  rect collects the entities whose centers fall inside it (a 315 signpost
+  tile, a 2×2 door block) — the real map's two `room1` rects (one over the
+  signpost, one over the door) collate into one group that thus links its
+  sole signpost to its sole door. The room's `QuestGate` reads
+  the very same groups: once every showquest interaction linked to a door
+  has been answered correctly it opens the door, flipping the synced
+  `JungleState.doors` entry to `open`. The client applies opened doors via
+  `scene/update.ts` → `src/game/door/door-open.ts`, driven by that schema
+  every frame: `clearDoorFromGrid` zeroes the door's four cells in the
+  local prediction grid (the mirror of what the room does to its
+  validation grid, so the doorway is passable on both sides), while the
+  door's tile art keeps rendering as usual — only its PURPLE debug
+  perimeter is dropped (`CollisionDebug.hideDoor` in
+  `src/game/collision/collision-debug.ts`, which draws each door's lines
+  on their own graphics so an opened door's lines come off without
+  touching the overlay's other segments), so the debug lines stop drawing
+  collision at the passable doorway. Tracked in `state.openDoors` so each
+  open applies exactly once; because it is schema state, a client that
+  joins after a door opened still finds it passable. The
+  groups ride on `state.doorGroups` (`scene/state.ts`) and, when
+  `NEXT_PUBLIC_DOOR_DEBUG` is "1"/"true" (`scene/debug.ts`
+  `isDoorDebugEnabled`, option `{ doorDebug?: boolean }`),
+  `src/game/door/door-debug.ts` draws one CYAN line from every showquest to
+  every door in the same group, clipped per room like the collision overlay,
+  and logs each group's counts; runtime toggle `__jungleDoorDebug`.
 
 - **Player movement & netcode**: `src/game/player/player.ts` drives the
   monkey with the **shared physics** (`createPlayerState`/`stepPlayer` from
@@ -168,7 +202,10 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   grid reads, and sends `PLAYER_INTERACTION_MESSAGE` with the found gid.
   The sent `gid` is advisory only: the room re-probes its own last accepted
   position with the same rule before running the action, so a stale/forged
-  press is a no-op. 315 → "showquest" opens the **quest box**
+  press is a no-op — and a signpost already answered correctly is
+  completed: the room silently refuses every future press on it (the
+  completion gate lives server-side, see quest-gate in @monkeyluka/server).
+  315 → "showquest" opens the **quest box**
   (`src/game/quest/`): the room sends `quest:question` `{question,
   choices}` (a random question from `Assets/question.json`, choices
   shuffled + unlabeled server-side — the answer key never reaches the
@@ -183,7 +220,13 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   numbers: the row order is the shuffle, and a number key would be an
   unlabeled guess); `quest:answer` `{choice}` is
   graded server-side and `quest:result` `{correct}` flashes
-  Correct!/Wrong before the box auto-closes. While the box is up it is
+  Correct!/Wrong before the box auto-closes; a correct answer completes the
+  signpost tile (never asks again) and, once every signpost linked to a
+  door is done, the room opens that door — the schema-synced
+  `JungleState.doors` state makes the client clear the doorway's collision
+  and drop its purple debug perimeter on the next frame (see the
+  door-opening bullet above).
+  While the box is up it is
   modal: `state.questOpen` freezes movement input and the E key in
   `scene/update.ts`, and the box closes itself 3s after an unanswered
   answer (a blip can't wedge the player in the modal).

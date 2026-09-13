@@ -7,11 +7,15 @@
  */
 
 import {
+  buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
   COLLISION_LAYER_NAME,
+  ROOM_OBJECT_GROUP_NAME,
   TILE_SIZE,
+  type DoorEntity,
   type InteractionGrid,
+  type RoomObject,
   type SolidGrid,
 } from "@monkeyluka/shared";
 
@@ -22,6 +26,15 @@ interface RawMapLayer {
   width?: number;
   height?: number;
   data?: number[] | string;
+  // `objectgroup` fields: the room group's door-link annotation objects.
+  objects?: Array<{
+    id?: number;
+    name?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 interface RawTiledMap {
@@ -34,6 +47,14 @@ export interface JungleMapData {
   grid: SolidGrid;
   /** Interaction tiles (gid → action registry) built from the same layer. */
   interactions: InteractionGrid;
+  /** Recognized door entity blocks (2×2 of door gids) from the same layer. */
+  doors: DoorEntity[];
+  /**
+   * The room objectgroup's raw objects (Tiled rectangles with names) —
+   * grouped by name with `groupRoomObjectsByName` they link each showquest
+   * signpost to the doors its answers will open.
+   */
+  roomObjects: RoomObject[];
   /** World size in pixels (matches the web's map model). */
   width: number;
   height: number;
@@ -78,9 +99,25 @@ export function parseJungleMap(raw: RawTiledMap): JungleMapData {
 
   const grid = buildTileGrid({ width, height, gids });
   const interactions = buildInteractionGrid({ width, height, gids });
+  const doors = buildDoorEntities({ width, height, gids });
+  const roomGroup = (raw.layers ?? []).find(
+    (candidate) =>
+      candidate.type === "objectgroup" &&
+      candidate.name === ROOM_OBJECT_GROUP_NAME,
+  );
+  const roomObjects: RoomObject[] = (roomGroup?.objects ?? []).map((obj) => ({
+    id: obj.id ?? 0,
+    name: obj.name ?? "",
+    x: obj.x ?? 0,
+    y: obj.y ?? 0,
+    width: obj.width ?? 0,
+    height: obj.height ?? 0,
+  }));
   return {
     grid,
     interactions,
+    doors,
+    roomObjects,
     width: grid.width * TILE_SIZE,
     height: grid.height * TILE_SIZE,
   };

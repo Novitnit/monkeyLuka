@@ -91,17 +91,52 @@ export function buildInteractionGrid(
  */
 export const INTERACTION_FEET_SLACK = 2;
 
+/** The interaction tile an E-key probe resolved, with its grid cell. */
+export interface InteractionTileProbe {
+  /** The interaction gid found at the cell (always a registered gid). */
+  gid: number;
+  /** Grid column of the tile. */
+  tx: number;
+  /** Grid row of the tile. */
+  ty: number;
+}
+
 /**
- * The interaction tile gid under the player's feet, or 0. `x`/`y` are the
+ * The interaction tile under the player's feet, or null. `x`/`y` are the
  * AABB center; `height` its height (feet = y + height/2 ≙ the collider's
  * bottom edge). Probes the cell containing the feet point, then — when the
  * feet sit at or within `INTERACTION_FEET_SLACK` below a cell boundary —
  * the cell just above it: the interaction tile's base is placed flush at
  * the standing surface (315 sits directly above the floor cell it triggers
  * from), so the flush-boundary case is the common one and the point alone
- * would miss it. Pure and engine-free, so the web client probes its local
- * prediction and the server re-probes its last accepted position with the
- * very same rule.
+ * would miss it. Returns the CELL the gid came from, so callers can act on
+ * that tile's identity (e.g. mark a signpost solved) — not just the gid.
+ * Pure and engine-free, so the web client probes its local prediction and
+ * the server re-probes its last accepted position with the very same rule.
+ */
+export function probeInteractionTile(
+  grid: InteractionGrid,
+  x: number,
+  y: number,
+  height: number,
+): InteractionTileProbe | null {
+  const feetY = y + height / 2;
+  const tx = Math.floor(x / TILE_SIZE);
+  const ty = Math.floor(feetY / TILE_SIZE);
+
+  const gid = grid.gids[ty * grid.width + tx] ?? 0;
+  if (gid !== 0) return { gid, tx, ty };
+
+  if (ty > 0 && feetY % TILE_SIZE <= INTERACTION_FEET_SLACK) {
+    const above = grid.gids[(ty - 1) * grid.width + tx] ?? 0;
+    if (above !== 0) return { gid: above, tx, ty: ty - 1 };
+  }
+  return null;
+}
+
+/**
+ * The interaction tile gid under the player's feet, or 0 — shorthand over
+ * `probeInteractionTile` for callers that only need the gid.
  */
 export function interactionTileUnderFeet(
   grid: InteractionGrid,
@@ -109,16 +144,5 @@ export function interactionTileUnderFeet(
   y: number,
   height: number,
 ): number {
-  const feetY = y + height / 2;
-  const tx = Math.floor(x / TILE_SIZE);
-  const ty = Math.floor(feetY / TILE_SIZE);
-
-  const gid = grid.gids[ty * grid.width + tx] ?? 0;
-  if (gid !== 0) return gid;
-
-  if (ty > 0 && feetY % TILE_SIZE <= INTERACTION_FEET_SLACK) {
-    const above = grid.gids[(ty - 1) * grid.width + tx] ?? 0;
-    if (above !== 0) return above;
-  }
-  return 0;
+  return probeInteractionTile(grid, x, y, height)?.gid ?? 0;
 }

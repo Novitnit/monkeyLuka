@@ -12,8 +12,11 @@
 import type Phaser from "phaser";
 import {
   COLLISION_LAYER_NAME,
+  ROOM_OBJECT_GROUP_NAME,
+  buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
+  groupRoomObjectsByName,
 } from "@monkeyluka/shared";
 import {
   ROOM_HEIGHT,
@@ -31,12 +34,14 @@ import {
 } from "../player/animations";
 import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
+import { createDoorDebug } from "../door/door-debug";
 import { createQuestBox } from "../quest/quest-box";
 import type { JungleGameOptions, JungleRoom } from "../jungle-game";
 import { MAP_DIR, MAP_FILE, PLAYER_DIR } from "./constants";
 import {
   isCollisionDebugEnabled,
   isDebugEnabled,
+  isDoorDebugEnabled,
   setDebugHandle,
 } from "./debug";
 import type { JungleSceneState } from "./state";
@@ -102,6 +107,7 @@ export function createSceneCreate(
           );
           setDebugHandle("__jungleCollision", collision);
           setDebugHandle("__jungleCollisionDebug", collisionDebug);
+          state.collisionDebug = collisionDebug;
 
           // The physics grid is built from the same layer the server reads
           // from Assets/map/main.json, so prediction can't diverge on
@@ -120,6 +126,38 @@ export function createSceneCreate(
           // (buildTileGrid folds non-solid gids to 0) — only the feet
           // probe (E key, update.ts) reads this one.
           const interactions = buildInteractionGrid(layer);
+
+          // Door-link groups: each room objectgroup rectangle is a named
+          // region that contains the tile entities whose centers fall
+          // inside it — a 315 signpost tile and a 2×2 door block. Objects
+          // that share a name form one gate: the showquest gating that
+          // door. The real map has a single room object named `room1` — a
+          // whole-map bounds rect (0,0,496M-CM-^-272) containing the signpost
+          // and the door by center — so they share one group whose signpost
+          // and door are linked. Foundation for "answer the question → open the door"
+          // (the room will read the same groups); today only the debug
+          // overlay below draws them (NEXT_PUBLIC_DOOR_DEBUG).
+          const doors = buildDoorEntities(layer);
+          const roomObjects =
+            map.objectGroups.find(
+              (group) => group.name === ROOM_OBJECT_GROUP_NAME,
+            )?.objects ?? [];
+          const doorGroups = groupRoomObjectsByName(
+            roomObjects,
+            doors,
+            interactions,
+          );
+          state.doorGroups = doorGroups;
+          if (options.doorDebug ?? isDoorDebugEnabled()) {
+            const doorDebug = createDoorDebug(
+              this,
+              map,
+              render.rooms,
+              doorGroups,
+              {linkColor:0xbb68f2}
+            );
+            setDebugHandle("__jungleDoorDebug", doorDebug);
+          }
 
           // Player sprites get their own layer instead of living inside
           // `rooms[0]`: a container renders as one unit at its display-list

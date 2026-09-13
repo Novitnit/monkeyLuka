@@ -15,6 +15,13 @@ export interface JungleGameOptions {
    * runtime via `__jungleCollisionDebug.setEnabled(...)`.
    */
   collisionDebug?: boolean;
+  /**
+   * Draw the door-link debug lines (cyan, signpost → door per room
+   * objectgroup name). Defaults to the NEXT_PUBLIC_DOOR_DEBUG flag — off
+   * unless it's "1"/"true" — overridable at runtime via
+   * `__jungleDoorDebug.setEnabled(...)`.
+   */
+  doorDebug?: boolean;
 }
 
 /**

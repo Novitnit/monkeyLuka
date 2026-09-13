@@ -30,9 +30,12 @@ import {
   buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
+  clearDoorFromGrid,
   createPlayerState,
+  doorKey,
   gridPixelSize,
   grabableWallBeside,
+  groupRoomObjectsByName,
   interactionActionForGid,
   interactionTileUnderFeet,
   isBoxInDeadZone,
@@ -41,10 +44,12 @@ import {
   isInteractionTileGid,
   isPointSolid,
   maxPlayerSpeed,
+  probeInteractionTile,
   stepPlayer,
   validatePositionReport,
   type CollisionLayerData,
   type PlayerInput,
+  type RoomObject,
   type SolidGrid,
 } from "./physics";
 
@@ -1701,6 +1706,40 @@ describe("interaction tiles (315 → showquest)", () => {
       toBe(0);
   });
 
+  test("probeInteractionTile resolves the tile's own cell (its identity)", () => {
+    // 315 sits directly ABOVE the floor cell the player stands on (the
+    // signpost base is flush with the standing surface), so the flush
+    // case reads the boundary-ABOVE cell — and the probe must report THAT
+    // cell (row 3), not the feet cell below it (row 4): the cell is what
+    // marks the signpost completed.
+    const gids = new Array<number>(8 * 8).fill(0);
+    gids[3 * 8 + 2] = TILE_INTERACTION;
+    for (let x = 0; x < 8; x++) gids[4 * 8 + x] = TILE_SOLID;
+    const grid = buildInteractionGrid(layer(8, 8, gids));
+
+    // Flush resting on the floor below the signpost → the signpost's cell.
+    const feet = 4 * TILE_SIZE;
+    expect(
+      probeInteractionTile(grid, 2 * 16 + 8, feet - config.height / 2, config.height),
+    ).toEqual({ gid: TILE_INTERACTION, tx: 2, ty: 3 });
+    // A 1px-sunk foot (slope support settlement) still resolves the same cell.
+    expect(
+      probeInteractionTile(grid, 2 * 16 + 8, feet - config.height / 2 + 1, config.height),
+    ).toEqual({ gid: TILE_INTERACTION, tx: 2, ty: 3 });
+    // Standing ON the tile itself (tile as floor) resolves the feet cell.
+    expect(
+      probeInteractionTile(grid, 2 * 16 + 8, 3 * TILE_SIZE - config.height / 2, config.height),
+    ).toEqual({ gid: TILE_INTERACTION, tx: 2, ty: 3 });
+    // No interaction under the feet → null.
+    expect(
+      probeInteractionTile(grid, 4 * 16 + 8, feet - config.height / 2, config.height),
+    ).toBeNull();
+    // The gid-only shorthand agrees on all of the above.
+    expect(
+      interactionTileUnderFeet(grid, 2 * 16 + 8, feet - config.height / 2, config.height),
+    ).toBe(TILE_INTERACTION);
+  });
+
   test("the real map's tile 315 is under the feet of a player on its floor", () => {
     // main.json has exactly one interaction gid: 315 at tile (17, 11), with
     // a solid floor (row 12) directly beneath it — the signpost the player
@@ -1961,5 +2000,114 @@ describe("door entities", () => {
     });
     expect(doors).toHaveLength(1);
     expect(doors[0]).toMatchObject({ tx: 29, ty: 8 });
+    // Its identity key is the top-left cell, the schema/wire map key.
+    expect(doorKey(29, 8)).toBe("29,8");
+    expect(doorKey(doors[0]!.tx, doors[0]!.ty)).toBe("29,8");
+  });
+
+  test("clearDoorFromGrid makes a closed door's doorway passable", () => {
+    // Mirror of the closed-door test: the four gids fold into TILE_DOOR and
+    // a box overlapping the block reads solid, until the door is opened —
+    // clearing the four cells to 0 makes the doorway passable. That is
+    // exactly what both sides apply when every linked showquest is answered:
+    // the room clears its validation grid (so reports inside the doorway
+    // aren't buried-in-geometry) and each client clears its prediction grid.
+    const gids = new Array<number>(8 * 4).fill(0);
+    placeDoor(gids, 8, 2, 1);
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID; // floor beneath
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const doorway = { x: 3 * TILE_SIZE, y: 2 * TILE_SIZE }; // inside the block
+    expect(
+      isBoxSolid(grid, doorway.x, doorway.y, config.width, config.height),
+    ).toBe(true);
+
+    clearDoorFromGrid(grid, 2, 1);
+    // Only the floor row remains solid.
+    const solids = [...grid.kinds].filter((k) => k !== 0);
+    expect(solids).toHaveLength(8);
+    expect(solids.every((k) => k === TILE_SOLID)).toBe(true);
+    expect(
+      isBoxSolid(grid, doorway.x, doorway.y, config.width, config.height),
+    ).toBe(false);
+  });
+});
+
+describe("door-link groups (room objectgroup ↔ tiles)", () => {
+  /** Builds a 6×6 layer with a 315 showquest tile at (1,4) and a 2×2 door block at (3,1). */
+  const linkLayer = (): CollisionLayerData => {
+    const width = 6;
+    const height = 6;
+    const gids = new Array<number>(width * height).fill(0);
+    gids[4 * width + 1] = TILE_INTERACTION;
+    gids[1 * width + 3] = TILE_DOOR_TOP_LEFT;
+    gids[1 * width + 4] = TILE_DOOR_TOP_RIGHT;
+    gids[2 * width + 3] = TILE_DOOR_BOTTOM_LEFT;
+    gids[2 * width + 4] = TILE_DOOR_BOTTOM_RIGHT;
+    return layer(width, height, gids);
+  };
+
+  test("a room object contains the entities whose centers fall in its rect", () => {
+    const layerMap = linkLayer();
+    const doors = buildDoorEntities(layerMap);
+    const interactions = buildInteractionGrid(layerMap);
+    const room1: RoomObject = { id: 1, name: "room1", x: 0, y: 0, width: 96, height: 96 };
+    const groups = groupRoomObjectsByName([room1], doors, interactions);
+
+    // room1 encloses the whole layer: its 315 signpost center (24, 72) and
+    // the door block center (64, 32) both land inside, so the group links
+    // 1 showquest to 1 door — the real map's shape in miniature.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.name).toBe("room1");
+    expect(groups[0]!.objects).toEqual([room1]);
+    expect(groups[0]!.showquest).toHaveLength(1);
+    expect(groups[0]!.showquest[0]).toEqual({ tx: 1, ty: 4 });
+    expect(groups[0]!.doors).toHaveLength(1);
+    expect(groups[0]!.doors[0]).toMatchObject({ tx: 3, ty: 1 });
+  });
+
+  test("rectangles link only the entities they contain (counts per group)", () => {
+    const layerMap = linkLayer();
+    const doors = buildDoorEntities(layerMap);
+    const interactions = buildInteractionGrid(layerMap);
+
+    const objects: RoomObject[] = [
+      // A rect over just the signpost (1 showquest, no door)…
+      { id: 1, name: "sign", x: 16, y: 64, width: 16, height: 16 },
+      // … a rect over just the door (1 door, no showquest)…
+      { id: 2, name: "gate", x: 48, y: 16, width: 32, height: 32 },
+      // … and a small rect containing neither (links nothing).
+      { id: 3, name: "decor", x: 0, y: 0, width: 32, height: 32 },
+    ];
+    const groups = groupRoomObjectsByName(objects, doors, interactions);
+
+    expect(groups.map((g) => g.name)).toEqual(["sign", "gate", "decor"]);
+    expect(groups[0]!.showquest).toHaveLength(1);
+    expect(groups[0]!.doors).toHaveLength(0);
+    expect(groups[1]!.showquest).toHaveLength(0);
+    expect(groups[1]!.doors).toHaveLength(1);
+    expect(groups[1]!.doors[0]).toMatchObject({ tx: 3, ty: 1 });
+    expect(groups[2]!.showquest).toHaveLength(0);
+    expect(groups[2]!.doors).toHaveLength(0);
+  });
+
+  test("same-name rectangles collate into one gate; shared centers don't double-count", () => {
+    const layerMap = linkLayer();
+    const doors = buildDoorEntities(layerMap);
+    const interactions = buildInteractionGrid(layerMap);
+
+    // Two rects named "gate1": one over the signpost, one over the door —
+    // plus a second signpost rect overlapping the first (same center) to
+    // prove dedupe inside a group.
+    const objects: RoomObject[] = [
+      { id: 1, name: "gate1", x: 16, y: 64, width: 16, height: 16 },
+      { id: 2, name: "gate1", x: 0, y: 64, width: 32, height: 16 }, // still centers on (24, 72)
+      { id: 3, name: "gate1", x: 48, y: 16, width: 32, height: 32 },
+    ];
+    const groups = groupRoomObjectsByName(objects, doors, interactions);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.objects).toHaveLength(3);
+    expect(groups[0]!.showquest).toHaveLength(1);
+    expect(groups[0]!.doors).toHaveLength(1);
   });
 });

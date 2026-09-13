@@ -46,9 +46,25 @@ export const PlayerInfo = schema({
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;
 
+/**
+ * A door's public, synced state — one entry per door entity (see
+ * `buildDoorEntities` in physics), keyed by `doorKey(tx, ty)`. Written by
+ * the room when it opens a door (every showquest interaction linked to the
+ * door answered correctly); clients clear the door's collision cells and
+ * hide its art the moment the schema reports "open". It is synced like the
+ * player map, so a player joining after a door opened still finds it open.
+ */
+export const DoorInfo = schema({
+  tx: t.number(),
+  ty: t.number(),
+  state: t.string(),
+}, "DoorInfo");
+export type DoorInfo = InstanceType<typeof DoorInfo>;
+
 /** Root room state, synced to every client in a jungle room. */
 export const JungleState = schema({
   players: t.map(PlayerInfo),
+  doors: t.map(DoorInfo),
 }, "JungleState");
 export type JungleRoomState = InstanceType<typeof JungleState>;
 

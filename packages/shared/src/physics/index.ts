@@ -19,6 +19,10 @@
  *                       door is a solid, NON-sticky block — the grid folds
  *                       their gids into the TILE_DOOR kind, which blocks
  *                       walking but can't be grabbed (no wall cling)
+ * - `door-links.ts`  – door-link groups: the room objectgroup's named
+ *                       objects grouped by name and classified against the
+ *                       tile entities (showquest interaction vs door) so a
+ *                       signpost knows which doors it gates
 
  * - `collision/`      – point/AABB collision tests + penetration helpers +
  *                       the `wallBeside` wall-adjacency probe, split into
@@ -71,6 +75,7 @@
 export * from "./tiles";
 export * from "./interaction";
 export * from "./door";
+export * from "./door-links";
 export * from "./collision";
 export * from "./player";
 export * from "./validation";

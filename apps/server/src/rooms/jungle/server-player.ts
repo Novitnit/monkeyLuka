@@ -1,13 +1,20 @@
 /**
  * A question currently out to a player, awaiting its `quest:answer`. The
  * correct index is the answer key: it lives only here on the server, and
- * grading compares the client's reported choice against it.
+ * grading compares the client's reported choice against it. `tx`/`ty` are
+ * the interaction tile that asked the question — a correct answer marks
+ * THAT signpost completed (it can't be asked again) and feeds the
+ * door-opening gate.
  */
 export interface QuestPending {
   /** Index of the correct choice within the shuffled choices that were sent. */
   correctIndex: number;
   /** How many choices the player received (bounds the reported answer). */
   choiceCount: number;
+  /** Grid column of the interaction tile the question came from. */
+  tx: number;
+  /** Grid row of the interaction tile the question came from. */
+  ty: number;
 }
 
 /**

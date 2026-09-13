@@ -63,17 +63,29 @@ into focused modules re-exported so all existing imports
 layer → `SolidGrid`, world bounds), `interaction.ts` (interaction tiles:
 the gid → action registry `INTERACTION_TILE_ACTIONS`, the
 `InteractionGrid` + `buildInteractionGrid`, and the
-`interactionTileUnderFeet` feet probe that drives the E key), `collision/` (point/AABB tests +
+`probeInteractionTile` feet probe that drives the E key — it returns the
+tile's own cell (gid + tx/ty), so a caller can act on that signpost's
+identity; `interactionTileUnderFeet` is the gid-only shorthand),
+`collision/` (point/AABB tests +
 penetration helpers + `wallBeside` wall-adjacency probe, split into
 `masks.ts` (the pixel masks for 288 stairs / 464 dead zone + the shared
 box-overlap / cell-walk / pixel-mask helpers `cellOverlapRect`,
 `forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
 `point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `door.ts` (door
 entities: each non-overlapping 2×2 block of the door gids 375/376/401/402
-is one open/closed door world object via `buildDoorEntities` — a closed
+is one open/closed door world object via `buildDoorEntities`, keyed by
+the top-left cell (`doorKey`); a closed
 door is solid but non-sticky: `buildTileGrid` folds the gids into the
 `TILE_DOOR` kind, a full block that blocks walking yet can't be grabbed
-by the wall-cling), `player/` (the
+by the wall-cling. `clearDoorFromGrid` opens a door in a collision grid —
+zeroes its four cells — which is what the server applies to its validation
+grid and each client to its prediction grid when the answers open the
+door), `door-links.ts` (door-link groups: each `room` objectgroup
+rectangle is a named region that collects the showquest interactions and
+door entities whose centers fall inside it via `groupRoomObjectsByName` —
+same-name objects share one gate; the server's quest gate reads the same
+groups to open a gate's doors when every linked showquest is answered
+correctly), `player/` (the
 `stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
 state machine (grab/hang/wall-jump/release) — split into `config.ts`
 (config, spawn, speed ceiling), `state.ts`, `step.ts`), `validation.ts`
@@ -114,12 +126,15 @@ or Colyseus imports — so it can also be unit-tested directly.
   gid → action id (315 → `"showquest"` — the server sends the player a
   random question from `Assets/question.json`, see the quest bullet below); `buildInteractionGrid(layer)` →
   `InteractionGrid` (same dims/layer as the collision grid, only
-  registered gids kept, 0 = inert); `interactionTileUnderFeet(grid, x, y,
+  registered gids kept, 0 = inert); `probeInteractionTile(grid, x, y,
   height)` is the E-key probe — it reads the cell under the AABB's bottom
   edge and, when the feet sit at/within `INTERACTION_FEET_SLACK` (2px) of a
   cell boundary, also the cell just above, because a signpost's base is
   placed flush with the standing surface (315 sits directly above the
-  floor cell it triggers from). The web client probes its local prediction
+  floor cell it triggers from) — and returns the resolved tile's own cell
+  (gid + tx/ty), the identity the server's completion gate keys on.
+  `interactionTileUnderFeet` is the gid-only shorthand. The web client
+  probes its local prediction
   with it on E; the server re-probes its own last accepted position with
   the same rule before running the action, so the wire `gid` alone can't
   fire an interaction the player isn't standing on.
@@ -211,8 +226,15 @@ or Colyseus imports — so it can also be unit-tested directly.
 `PlayerInfo` in `src/index.ts` carries the broadcast movement state
 (`x`, `y`, `vx`, `vy`, `grounded`, `clinging`, `facing`) alongside `name`;
 the server is the only writer, and it writes accepted client reports
-(velocity clamped to the physics max). The two physics bugs found while
-building this are written up in
+(velocity clamped to the physics max). `JungleState` also carries a synced
+`doors` map of `DoorInfo` (`tx`, `ty`, `state: "open" | "closed"`), keyed
+by `doorKey(tx, ty)`: seeded by the room at creation from the map's door
+entities, and flipped to `"open"` when every showquest interaction linked
+to the door has been answered correctly — clients clear the doorway's
+collision cells from that schema state (the web client's debug overlay
+also drops the door's purple perimeter; its art keeps rendering), so a
+player who joins after a door opened still finds it open). The two physics bugs found
+while building this are written up in
 `discoveries/jungle-grounded-persists-off-ledge.md` and
 `discoveries/jungle-anticheat-flags-grounded-players.md`.
 

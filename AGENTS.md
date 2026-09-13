@@ -194,10 +194,15 @@ web client probes its own simulated position against the pits every frame
 with its bottom at/within 1px above the basin-floor base, so a player
 standing on it, or falling into it, touches, while a player on the ground
 beside a pit, or flying high over the mouth, never touches) and, on touch,
-returns the player to its checkpoint through the exact
+**kills the player** — the scene hands the kill to `onDead`
+(`apps/web/src/game/death.ts`, dispatched per `DeathCause`; the update loop
+only calls it once per death via the `checkpointPending` guard), which for
+now runs one behavior: return to the checkpoint through the exact
 `PLAYER_CHECKPOINT_MESSAGE` flow the debug R key uses (teleport locally,
 freeze reconciliation until the server confirms, and let the room
 re-baseline at the spawn so the jump isn't a teleport violation) — the
+death-behavior switch in `onDead` is the extension point for future death
+behaviors and causes. The
 Colyseus room no longer probes or logs the pits, and the web
 debug overlay draws the pit outline RED (`hazard` collision segments). 315
 is the first **interaction tile** (a signpost in the map at tile (17, 11),
@@ -209,10 +214,11 @@ from the same `layer1`) that only the E-key feet probe reads. Standing on
 one and pressing E (edge-triggered, grounded only) sends
 `PLAYER_INTERACTION_MESSAGE` with the gid the client's feet probe found;
 the room does NOT trust that gid alone — it re-probes its OWN last accepted
-position with the same shared rule (`interactionTileUnderFeet`, which also
+position with the same shared rule (`probeInteractionTile`, which also
 walks up the cell above the feet when they sit at/within 2px of a cell
 boundary, because the signpost's base is flush with the standing floor's
-top, i.e. in the cell above the feet) and only runs the action when the
+top, i.e. in the cell above the feet — and returns the tile's OWN cell,
+the identity the completion gate keys on) and only runs the action when the
 gids agree AND the accepted report is grounded, so a forged or stale press
 is a no-op. Actions resolve from the shared `INTERACTION_TILE_ACTIONS`
 registry (315 → `"showquest"`): `runInteraction` in
@@ -240,7 +246,46 @@ grabable once the strip fully clears the door's edge. The web debug overlay
 draws each
 door's own full 2×2 perimeter in **purple** — door edges
 never merge with or get hidden by other collision types, mirroring the
-464 pit outline. The
+464 pit outline. Each door's lines live on their own graphics (keyed by
+`doorKey(tx, ty)`, see `CollisionGeometry.doors` in
+`apps/web/src/game/collision/collision-geometry.ts`), so the overlay can
+hide them per door once the door opens (see below). **Opening a door is room-level puzzle progress**: the
+room's `QuestGate` (`apps/server/src/rooms/jungle/quest-gate.ts`) flips a
+door's entity state to `open` when every showquest interaction linked to
+it (same room-objectgroup name group, see the door-links bullet) has been
+answered correctly. Opening must make the doorway passable on BOTH sides:
+`clearDoorFromGrid` (shared `physics/door.ts`) zeroes the door's four
+cells in the room's validation grid (reports from inside the doorway must
+not read as buried-in-geometry) and in every client's prediction grid
+(`apps/web/src/game/door/door-open.ts`, driven by the synced
+`JungleState.doors` schema). The door's tile art keeps rendering as
+usual — only its purple debug-collision perimeter is dropped
+(`CollisionDebug.hideDoor` in `apps/web/src/game/collision/collision-debug.ts`,
+which draws each door's lines on its own graphics precisely so an opened
+door's lines can be removed individually), so the debug overlay stops
+drawing collision at the passable doorway. Because the state is
+schema-synced, a player who joins after the door opened still finds it
+open.
+
+**Door links (room objectgroup)**: each rectangle in the Tiled map's `room`
+objectgroup is a named region; a tile entity belongs to it when its
+**center** falls inside the rectangle (`groupRoomObjectsByName` in
+`packages/shared/src/physics/door-links.ts`), and objects that share a
+**name** form one gate linking the showquest interactions to the doors those
+rectangles contain. No extra map objects: the real map has a single room
+object named `room1` — a whole-map bounds rect (0,0,496×272, hidden in
+Tiled) containing the signpost at tile (17,11) and the door at tile (29,8)
+by center — so the signpost and the door are linked directly under the
+shared name — counts are 1 showquest × 1 door
+for `room1` (proved by a loader test over `Assets/map/main.json`); the
+server's `loadJungleMap` exposes `roomObjects` + `doors`, and the room's
+quest gate reads the very same groups to open doors once their showquests
+are all answered correctly (`QuestGate` in
+`apps/server/src/rooms/jungle/quest-gate.ts`). The
+`NEXT_PUBLIC_DOOR_DEBUG`
+("1"/"true", runtime toggle `__jungleDoorDebug`) debug overlay draws cyan lines from
+every showquest to every door in the same-name group
+(`apps/web/src/game/door/door-debug.ts`) and logs each group's counts. The
 Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
@@ -261,7 +306,9 @@ off unless "1"/"true"): the collision-debug overlay renders, and R teleports
 the player back to its checkpoint (starting at the spawn point) through a
 `PLAYER_CHECKPOINT_MESSAGE` the room always accepts (its target is the
 server-chosen spawn, so it can't bypass the anti-cheat) — only the R key
-itself is debug-gated, on the web side.
+itself is debug-gated, on the web side. `NEXT_PUBLIC_DOOR_DEBUG`
+("1"/"true") is a separate web-only gate for the cyan door-link lines
+(see the door-links bullet above).
 
 **Quest questions (showquest)**: pressing E on the 315 signpost (see the
 interaction bullet above) no longer logs — the server sends that player a
@@ -272,7 +319,8 @@ shuffles its choices with a Fisher–Yates that tracks the correct index
 (`shuffleChoices`) — the key stays server-side in the player's
 `pendingQuest` slot (one unanswered question per player at a time: repeat
 presses are dropped until the answer is graded, and `onReconnect` clears a
-stale slot, so a reloaded player's signpost still works). The client only
+stale slot, so a reloaded player's signpost still works). The pending slot
+also records the interaction tile the question came from. The client only
 ever receives `quest:question` `{question, choices}` — the raw plain-text
 strings, never the answer key — shows them in a screen-fixed modal box
 (`apps/web/src/game/quest/quest-box.ts`, click a row — mouse only, the
@@ -281,7 +329,11 @@ reports `quest:answer` `{choice}`; the room sanitizes + bounds the index by
 the sent `choiceCount`, grades it against the secret `correctIndex`, and
 replies `quest:result` `{correct}` (Correct!/Wrong, then the box closes;
 it also closes itself 3s after an unanswered answer so a blip can't wedge
-the player). The choices are displayed unlabeled and in the shuffled order,
+the player). A **correct** answer completes the interaction tile that asked
+it (`QuestGate.markCompleted`): that signpost can NEVER be asked again (a
+repeat press — or a forged one — is a silent no-op), and once every
+showquest interaction linked to a door is completed, the room opens that
+door for the whole room (see the door-entities/door-links bullets). The choices are displayed unlabeled and in the shuffled order,
 so no visual number or position leaks the file's answer key. The client
 typesets the ASCII math (`d((x^5))/dx`, `5x^4`, `1/e^x`) with the shared
 parser (`packages/shared/src/math/`, pure + unit-tested) walking into a

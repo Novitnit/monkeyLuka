@@ -2,6 +2,7 @@ import { CloseCode, Room, type Client } from "colyseus";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
+  DoorInfo,
   JungleState,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_CHECKPOINT_MESSAGE,
@@ -10,9 +11,13 @@ import {
   QUEST_ANSWER_MESSAGE,
   QUEST_RESULT_MESSAGE,
   PlayerInfo,
+  clearDoorFromGrid,
   createPlayerState,
-  interactionTileUnderFeet,
+  doorKey,
+  groupRoomObjectsByName,
+  probeInteractionTile,
   validatePositionReport,
+  type DoorEntity,
   type JungleRoomState,
 } from "@monkeyluka/shared";
 import { loadJungleMap, type JungleMapData } from "../../game/jungle-map";
@@ -27,6 +32,7 @@ import {
   sanitizeQuestAnswer,
 } from "./input";
 import { runInteraction } from "./interactions";
+import { QuestGate } from "./quest-gate";
 import { writeIfChanged } from "./schema-write";
 import type { ServerPlayer } from "./server-player";
 
@@ -65,6 +71,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
 
   private map!: JungleMapData;
   private quests!: JungleQuestionBank;
+  private gate!: QuestGate;
   private readonly sim = new Map<string, ServerPlayer>();
 
   override async onCreate(): Promise<void> {
@@ -72,6 +79,25 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     this.quests = await loadJungleQuestions();
     this.state = new JungleState();
     if(debug){ console.log(`Room ${this.roomId} created`) }
+    // Room-level puzzle progress: which interaction tiles are solved, and
+    // which doors their completions have opened. Doors start closed;
+    // answering every showquest interaction linked to a door (per the room
+    // objectgroup's name groups) opens it for good.
+    this.gate = new QuestGate(
+      groupRoomObjectsByName(
+        this.map.roomObjects,
+        this.map.doors,
+        this.map.interactions,
+      ),
+    );
+    // Mirror every door entity into the synced schema so clients (and late
+    // joiners) learn about opens through the same state channel as players.
+    for (const door of this.map.doors) {
+      this.state.doors.set(
+        doorKey(door.tx, door.ty),
+        new DoorInfo({ tx: door.tx, ty: door.ty, state: door.state }),
+      );
+    }
     this.onMessage(PLAYER_INPUT_MESSAGE, (client, message: unknown) => {
       this.onPlayerInput(client, message);
     });
@@ -224,12 +250,14 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
    * Trigger an interaction tile (the E key, sent by the web client when its
    * local feet probe finds a gid). The room does not trust the wire `gid`
    * alone: it re-probes its OWN last accepted position with the shared
-   * `interactionTileUnderFeet` rule (same one the client uses) and only runs
+   * `probeInteractionTile` rule (same one the client uses) and only runs
    * the action when both agree — so a forged message can only fire an
    * interaction the player is genuinely standing on, and a stale report (the
    * player just stepped onto the tile) is a harmless no-op until the next
    * accepted report lands on it. The action must additionally be grounded in
-   * the accepted report (standing, not jumping through).
+   * the accepted report (standing, not jumping through). The probe also
+   * resolves the interaction tile's CELL, its identity for the completion
+   * gate and the linked-door puzzle.
    */
   private onPlayerInteraction(client: Client, message: unknown): void {
     const player = this.sim.get(client.sessionId);
@@ -241,13 +269,13 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     // Must be standing on the tile in the last ACCEPTED report — never the
     // client-supplied position (the schema holds only accepted reports).
     if (!player.lastValid.grounded) return;
-    const gid = interactionTileUnderFeet(
+    const probe = probeInteractionTile(
       this.map.interactions,
       player.lastValid.x,
       player.lastValid.y,
       DEFAULT_PLAYER_PHYSICS.height,
     );
-    if (gid !== payload.gid) return;
+    if (!probe || probe.gid !== payload.gid) return;
 
     const info = this.state.players.get(client.sessionId);
     runInteraction(payload.gid, {
@@ -259,6 +287,8 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       setQuestPending: (pending) => {
         player.pendingQuest = pending;
       },
+      tile: { tx: probe.tx, ty: probe.ty },
+      completed: this.gate.isCompleted(probe.tx, probe.ty),
     });
   }
 
@@ -268,7 +298,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
    * stray answer is a no-op), and the reported choice is bounded by the
    * `choiceCount` that was sent. The correct index is compared server-side
    * and only the boolean result leaves the room, so the client can't learn
-   * the key by probing answers.
+   * the key by probing answers. A correct answer completes the interaction
+   * tile that asked (it can never be answered again) and — once every
+   * showquest linked to a door is done — opens that door for the whole room.
    */
   private onQuestAnswer(client: Client, message: unknown): void {
     const player = this.sim.get(client.sessionId);
@@ -278,8 +310,29 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     if (!payload || payload.choice >= player.pendingQuest.choiceCount) return;
 
     const correct = payload.choice === player.pendingQuest.correctIndex;
+    if (correct) {
+      for (const door of this.gate.markCompleted(
+        player.pendingQuest.tx,
+        player.pendingQuest.ty,
+      )) {
+        this.openDoor(door);
+      }
+    }
     player.pendingQuest = null;
     client.send(QUEST_RESULT_MESSAGE, { correct });
+  }
+
+  /**
+   * Make an opened door passable for everyone: clear its cells from the
+   * room's validation grid (a report sent from inside the doorway must not
+   * read as buried-in-geometry) and flip the synced schema entry so every
+   * client clears its own prediction grid and hides the door art. The
+   * entity's own `state` was already flipped to "open" by the quest gate.
+   */
+  private openDoor(door: DoorEntity): void {
+    clearDoorFromGrid(this.map.grid, door.tx, door.ty);
+    const synced = this.state.doors.get(doorKey(door.tx, door.ty));
+    if (synced) synced.state = "open";
   }
 
   private removePlayer(sessionId: string): void {

@@ -67,6 +67,22 @@ export interface TiledTileLayer {
   gids: number[];
 }
 
+/** One annotation object from a Tiled objectgroup (rectangle in map px). */
+export interface TiledObject {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A Tiled objectgroup — the `room` group carries the door-link annotations. */
+export interface TiledObjectGroup {
+  name: string;
+  objects: TiledObject[];
+}
+
 /**
  * An image layer (Tiled `imagelayer`), e.g. the 480×272 `background` image
  * behind the tile layers. `image` is preloaded like tileset images;
@@ -98,6 +114,12 @@ export interface TiledMap {
   layers: TiledTileLayer[];
   /** `imagelayer`s in file order, rendered behind the tile layers. */
   imageLayers: TiledImageLayer[];
+  /**
+   * Objectgroups in file order — the `room` group's named rectangles link
+   * showquest signposts to the doors they gate (see door-links in
+   * @monkeyluka/shared).
+   */
+  objectGroups: TiledObjectGroup[];
   tilesets: TiledTileset[];
 }
 
@@ -141,6 +163,15 @@ export interface RawTiledMap {
     image?: string;
     repeatx?: boolean;
     repeaty?: boolean;
+    // `objectgroup` fields (the room group's annotation objects).
+    objects?: Array<{
+      id?: number;
+      name?: string;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+    }>;
   }>;
   tilesets?: Array<{
     firstgid?: number;
@@ -216,7 +247,25 @@ export async function resolveTiledMap(
 
   const layers: TiledTileLayer[] = [];
   const imageLayers: TiledImageLayer[] = [];
+  const objectGroups: TiledObjectGroup[] = [];
   for (const layer of raw.layers ?? []) {
+    if (layer.type === "objectgroup") {
+      // The room group's named rectangles are door-link annotations (see
+      // door-links in @monkeyluka/shared) — kept engine-free like the
+      // tile layers.
+      objectGroups.push({
+        name: layer.name ?? "objectgroup",
+        objects: (layer.objects ?? []).map((obj) => ({
+          id: obj.id ?? 0,
+          name: obj.name ?? "",
+          x: obj.x ?? 0,
+          y: obj.y ?? 0,
+          width: obj.width ?? 0,
+          height: obj.height ?? 0,
+        })),
+      });
+      continue;
+    }
     if (layer.type === "imagelayer") {
       if (!layer.image) {
         throw new Error(
@@ -268,6 +317,7 @@ export async function resolveTiledMap(
     tileHeight: raw.tileheight,
     layers,
     imageLayers,
+    objectGroups,
     tilesets,
   };
 }

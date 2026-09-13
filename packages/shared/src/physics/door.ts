@@ -10,13 +10,18 @@
  * `buildDoorEntities` recognizes each non-overlapping 2×2 block as one
  * door with a `state` field. Doors are also NON-STICKY: the wall-cling
  * grab skips TILE_DOOR faces (see grabableWallBeside in box.ts), so a
- * player jumping into a closed door slides off instead of hanging. Nothing
- * toggles doors yet; when opening/closing arrives, the affected cells
- * must be flipped between TILE_DOOR and 0 (e.g. by rebuilding the grid)
- * to match the entity states.
+ * player jumping into a closed door slides off instead of hanging. The
+ * server opens a door (entity state → "open") once every showquest
+ * interaction linked to it has been answered correctly (see
+ * door-gate / quest-gate in apps/server); opening must ALSO clear the
+ * door's cells from the collision grids (`clearDoorFromGrid`) on both the
+ * room's validation grid and every client's prediction grid, so the
+ * doorway is passable on both sides. The room objectgroup layer that ties
+ * a showquest signpost to the doors its answers will open lives in
+ * door-links.ts (`groupRoomObjectsByName`).
  */
 
-import type { CollisionLayerData } from "./tiles";
+import type { CollisionLayerData, SolidGrid } from "./tiles";
 import {
   TILE_DOOR_BOTTOM_LEFT,
   TILE_DOOR_BOTTOM_RIGHT,
@@ -55,7 +60,8 @@ export interface DoorEntity {
   cols: number;
   /** Door height in tiles (always 2 for a 2×2 block). */
   rows: number;
-  /** Open/closed state (doors start closed — nothing toggles them yet). */
+  /** Open/closed state (doors start closed; the server opens them when
+   * their linked showquest interactions are all answered correctly). */
   state: DoorState;
 }
 
@@ -89,4 +95,34 @@ export function buildDoorEntities(layer: CollisionLayerData): DoorEntity[] {
     }
   }
   return entities;
+}
+
+/**
+ * The stable identity key of a door block — its top-left tile's grid cell.
+ * Used as the map key for doors in the synced `JungleState` schema and to
+ * address door cells in the render-time art map.
+ */
+export function doorKey(tx: number, ty: number): string {
+  return `${tx},${ty}`;
+}
+
+/**
+ * Open a door in a collision grid: set its four 2×2 cells to 0 so the
+ * doorway is passable. The room clears its validation grid when it opens a
+ * door (a report sent from inside the doorway must not read as
+ * buried-in-geometry), and the web client clears its local prediction grid
+ * the same way after the synced schema reports the door open — one shared
+ * rule on both sides, mirroring how `buildTileGrid` folds closed door gids
+ * into the single TILE_DOOR kind.
+ */
+export function clearDoorFromGrid(
+  grid: SolidGrid,
+  tx: number,
+  ty: number,
+): void {
+  const i = ty * grid.width + tx;
+  grid.kinds[i] = 0;
+  grid.kinds[i + 1] = 0;
+  grid.kinds[i + grid.width] = 0;
+  grid.kinds[i + grid.width + 1] = 0;
 }

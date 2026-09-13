@@ -2,8 +2,10 @@
  * Unit tests for the showquest interaction handler (`interactions.ts`): the
  * room's E-key interaction must send exactly one shuffled question per press,
  * reserve the pending-quest slot (so a repeat press while the box is up sends
- * nothing), and track the correct index server-side — the client only ever
- * sees the plain question + shuffled choice strings.
+ * nothing), track the correct index server-side — the client only ever
+ * sees the plain question + shuffled choice strings — record which
+ * interaction tile asked (so a correct answer completes THAT signpost) and
+ * refuse to send again once the tile is completed.
  */
 import { describe, expect, test } from "bun:test";
 import { QUEST_QUESTION_MESSAGE, TILE_INTERACTION } from "@monkeyluka/shared";
@@ -28,7 +30,11 @@ interface Harness {
 }
 
 /** A fake room-shaped context: send captures messages, setQuestPending mutates. */
-function makeCtx(initialPending: QuestPending | null = null): Harness {
+function makeCtx(
+  initialPending: QuestPending | null = null,
+  tile: { tx: number; ty: number } = { tx: 17, ty: 11 },
+  completed = false,
+): Harness {
   let pending = initialPending;
   const sent: Array<{ type: string; payload: unknown }> = [];
   return {
@@ -43,6 +49,8 @@ function makeCtx(initialPending: QuestPending | null = null): Harness {
       setQuestPending: (next) => {
         pending = next;
       },
+      tile,
+      completed,
     },
   };
 }
@@ -68,6 +76,10 @@ describe("showquest interaction handler", () => {
     expect(reserved).not.toBeNull();
     expect(reserved!.choiceCount).toBe(4);
     expect(message.choices[reserved!.correctIndex]).toBeTypeOf("string");
+    // The interacted tile rides along, so the room can mark THAT signpost
+    // completed when the answer comes back correct.
+    expect(reserved!.tx).toBe(17);
+    expect(reserved!.ty).toBe(11);
   });
 
   test("a second press while a question is pending sends nothing", () => {
@@ -78,6 +90,14 @@ describe("showquest interaction handler", () => {
     expect(harness.sent.length).toBe(1);
 
     const { ctx, sent } = makeCtx(harness.pending());
+    runInteraction(TILE_INTERACTION, ctx);
+    expect(sent.length).toBe(0);
+  });
+
+  test("a completed interaction is permanently silent", () => {
+    // The tile was answered correctly before — the room's gate marks it
+    // completed, and pressing E on it again must not send another question.
+    const { ctx, sent } = makeCtx(null, { tx: 17, ty: 11 }, true);
     runInteraction(TILE_INTERACTION, ctx);
     expect(sent.length).toBe(0);
   });

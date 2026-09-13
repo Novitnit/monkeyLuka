@@ -3,10 +3,13 @@
  * of the collision blocks on top of the map, clipped to each room the same
  * way the tiles are. Horizontal edges (floors) are blue, vertical edges
  * (walls) are green, the 110/109/262/287 slope lines (orange) take over the
- * block boundary wherever they touch a 57 tile, the dead-zone (464) pit
- * outline is drawn RED (the `hazard` segments from collision-geometry),
- * and each door Entity's 2×2 perimeter is drawn PURPLE (the `door`
- * segments — self-contained, never merged with other collision types).
+ * block boundary wherever they touch a 57 tile, and the dead-zone (464) pit
+ * outline is drawn RED (the `hazard` segments from collision-geometry).
+ * Each door Entity's 2×2 perimeter is drawn PURPLE on its OWN graphics
+ * (one per room it crosses), so an opened door's lines can be hidden
+ * individually via `hideDoor()` — the overlay then stops drawing
+ * collision at a doorway that is now passable, while the door's tile art
+ * keeps rendering.
  *
  * The lines are children of their room containers, so they inherit the
  * room's scale/position. They are visible by default and can be toggled at
@@ -15,6 +18,7 @@
  */
 
 import type Phaser from "phaser";
+import { doorKey } from "@monkeyluka/shared";
 import {
   ROOM_HEIGHT,
   ROOM_WIDTH,
@@ -47,6 +51,13 @@ export interface CollisionDebug {
   /** Whether the lines are currently visible. */
   readonly enabled: boolean;
   setEnabled(on: boolean): void;
+  /**
+   * Hide one door Entity's purple 2×2 perimeter (its synced state is
+   * open): the debug overlay stops drawing collision at a doorway that
+   * is now passable. Idempotent; a later `setEnabled(true)` does NOT
+   * bring the hidden door's lines back.
+   */
+  hideDoor(tx: number, ty: number): void;
   destroy(): void;
 }
 
@@ -113,6 +124,13 @@ export function createCollisionDebug(
 
   let enabled = options.enabled ?? true;
   const graphics: Phaser.GameObjects.Graphics[] = [];
+  // Per-door purple perimeters, each on its OWN graphics (one entry per room
+  // the 2×2 block crosses), keyed by `doorKey(tx, ty)`, so an opened door's
+  // lines can be hidden individually (`hideDoor`) without touching the rest
+  // of the overlay. `hiddenDoors` keeps the hidden set authoritative, so a
+  // later `setEnabled(true)` doesn't resurrect an open door's lines.
+  const doorGraphics = new Map<string, Phaser.GameObjects.Graphics[]>();
+  const hiddenDoors = new Set<string>();
 
   for (let index = 0; index < rooms.length; index++) {
     const col = index % columns;
@@ -148,7 +166,7 @@ export function createCollisionDebug(
     };
 
     // Walls (vertical) first, then floors (horizontal), then the dead-zone
-    // hazard pits, then door entities, then slopes, so corners read cleanly.
+    // hazard pits, then slopes, so corners read cleanly.
     for (const s of geometry.segments) {
       if (s.kind === "wall") drawSegment(s, wallColor);
     }
@@ -158,13 +176,60 @@ export function createCollisionDebug(
     for (const s of geometry.segments) {
       if (s.kind === "hazard") drawSegment(s, hazardColor);
     }
-    for (const s of geometry.segments) {
-      if (s.kind === "door") drawSegment(s, doorColor);
-    }
     for (const d of geometry.diagonals) drawSegment(d, diagonalColor);
 
     overlay.setVisible(enabled);
     rooms[index].add(overlay);
+
+    // Door perimeters come from `CollisionGeometry.doors` (per Entity, not
+    // flat segments like the 464 outline): each door's 2×2 perimeter is
+    // clipped into the rooms it crosses and drawn on its own graphics
+    // object, keyed by `doorKey(tx, ty)` — so when the synced schema
+    // reports the door open, `hideDoor` can drop exactly those lines.
+    const tw = map.tileWidth;
+    const th = map.tileHeight;
+    for (const door of geometry.doors) {
+      const key = doorKey(door.tx, door.ty);
+      const left = door.tx * tw;
+      const top = door.ty * th;
+      const right = left + door.cols * tw;
+      const bottom = top + door.rows * th;
+      const sides = [
+        { x1: left, y1: top, x2: right, y2: top },
+        { x1: right, y1: top, x2: right, y2: bottom },
+        { x1: left, y1: top, x2: left, y2: bottom },
+        { x1: left, y1: bottom, x2: right, y2: bottom },
+      ];
+      for (const side of sides) {
+        const clipped = clipSegment(
+          side.x1,
+          side.y1,
+          side.x2,
+          side.y2,
+          originX,
+          originY,
+          originX + roomWidth,
+          originY + roomHeight,
+        );
+        if (!clipped) continue;
+        const overlays = doorGraphics.get(key) ?? [];
+        let doorOverlay = overlays[index];
+        if (!doorOverlay) {
+          doorOverlay = scene.add.graphics();
+          doorOverlay.setVisible(enabled && !hiddenDoors.has(key));
+          overlays[index] = doorOverlay;
+          doorGraphics.set(key, overlays);
+          rooms[index].add(doorOverlay);
+        }
+        doorOverlay.lineStyle(lineWidth, doorColor, 1);
+        doorOverlay.lineBetween(
+          clipped.x1 - originX,
+          clipped.y1 - originY,
+          clipped.x2 - originX,
+          clipped.y2 - originY,
+        );
+      }
+    }
   }
 
   return {
@@ -174,9 +239,25 @@ export function createCollisionDebug(
     setEnabled(on: boolean): void {
       enabled = on;
       for (const overlay of graphics) overlay.setVisible(on);
+      // Doors the room opened stay hidden even when the toggle turns back
+      // on — their lines describe a closed door that no longer exists.
+      for (const [key, overlays] of doorGraphics) {
+        const visible = on && !hiddenDoors.has(key);
+        for (const overlay of overlays) overlay.setVisible(visible);
+      }
+    },
+    hideDoor(tx: number, ty: number): void {
+      const key = doorKey(tx, ty);
+      hiddenDoors.add(key);
+      for (const overlay of doorGraphics.get(key) ?? []) {
+        overlay.setVisible(false);
+      }
     },
     destroy(): void {
       for (const overlay of graphics) overlay.destroy();
+      for (const overlays of doorGraphics.values()) {
+        for (const overlay of overlays) overlay.destroy();
+      }
     },
   };
 }

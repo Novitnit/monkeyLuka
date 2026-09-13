@@ -13,6 +13,7 @@ import {
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  groupRoomObjectsByName,
   isPointSolid,
 } from "@monkeyluka/shared";
 import { parseJungleMap } from "./jungle-map";
@@ -25,12 +26,14 @@ const raw = (await Bun.file(
 describe("jungle-map loader", () => {
   test("loads the real map's collision layer", () => {
     const { grid, width, height } = parseJungleMap(raw);
-    expect(grid.width).toBe(60);
+    expect(grid.width).toBe(120);
     expect(grid.height).toBe(17);
-    expect(width).toBe(60 * 16);
+    expect(width).toBe(120 * 16);
     expect(height).toBe(17 * 16);
 
-    // Snapshot of the real map's layer1 (computed from main.json): 146
+    // Snapshot of the real map's layer1 (computed from main.json): the map
+    // is 120 tiles wide (the right half, columns 60-119, is empty canvas
+    // reserved for future rooms). The playable left half is unchanged: 146
     // solid tiles (of which 3 are gid 65, folded into TILE_SOLID by
     // buildTileGrid) and 10 sloped kinds (4×110, 2×109, 2×287, 2×288 —
     // the two 287+288 ramp pairs; the current map has no 262). The four
@@ -72,5 +75,28 @@ describe("jungle-map loader", () => {
     expect(() => parseJungleMap({ width: 4, height: 4, layers: [] })).toThrow(
       'Map has no "layer1" tile layer',
     );
+  });
+
+  test("real map links room1's signpost to its door (1 showquest × 1 door)", () => {
+    const { roomObjects, doors, interactions } = parseJungleMap(raw);
+    const groups = groupRoomObjectsByName(roomObjects, doors, interactions);
+
+    // The room objectgroup holds a single `room1` rectangle spanning the
+    // whole map (0,0, 496×272, hidden in Tiled) — the whole-map bounds
+    // rect the map originally used, restored after the split
+    // (see discoveries/door-debug-no-line-mismatched-room-object-names.md).
+    // It contains the 315 signpost at tile (17, 11) and the door block at
+    // tile (29, 8) by center, so the group still links signpost → door —
+    // 1 showquest × 1 door, no extra objects.
+    expect(roomObjects.map((o) => o.name)).toEqual(["room1"]);
+    expect(roomObjects[0]).toMatchObject({ x: 0, y: 0, width: 496, height: 272 });
+    expect(groups.map((g) => g.name)).toEqual(["room1"]);
+
+    const room1 = groups[0]!;
+    expect(room1.objects).toHaveLength(1);
+    expect(room1.showquest).toHaveLength(1);
+    expect(room1.showquest[0]).toEqual({ tx: 17, ty: 11 });
+    expect(room1.doors).toHaveLength(1);
+    expect(room1.doors[0]).toMatchObject({ tx: 29, ty: 8 });
   });
 });

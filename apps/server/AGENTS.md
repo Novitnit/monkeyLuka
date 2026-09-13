@@ -72,8 +72,14 @@ only validates each report and relays it:
 
 1. `onCreate` loads the collision map (`src/game/jungle-map.ts`, reading the
    same `Assets/map/main.json` via four levels up from this file, override
-   with `JUNGLE_MAP_PATH` — it now also builds the `InteractionGrid` from the
-   same layer) and registers the `PLAYER_INPUT_MESSAGE` + `PLAYER_INTERACTION_MESSAGE` handlers. There is
+   with `JUNGLE_MAP_PATH` — it also builds the `InteractionGrid` and the
+   door entities from the same layer, exposes the `room` objectgroup's
+   raw rectangle objects as `roomObjects`, and groups them into door-link
+   gates with `groupRoomObjectsByName` so `QuestGate` (quest-gate.ts) can
+   open a door once every showquest interaction linked to it is answered
+   correctly, seeding the synced `JungleState.doors` map from the door
+   entities) and registers the
+   `PLAYER_INPUT_MESSAGE` + `PLAYER_INTERACTION_MESSAGE` handlers. There is
    no `setFixedTimestep` and no simulation loop.
 2. `onPlayerInput` sanitizes the payload shape (finite position/velocity/
    grounded/clinging/facing), applies a **flood rate limit**
@@ -152,10 +158,12 @@ registered.
    to `"showquest"`).
 2. The wire `gid` alone is never trusted: the room re-probes its OWN last
    accepted position (`server-player.ts`'s `lastValid`, the same state the
-   schema broadcasts) with the shared `interactionTileUnderFeet` rule and
+   schema broadcasts) with the shared `probeInteractionTile` rule and
    requires it to report the same gid — plus `lastValid.grounded` (standing,
-   not jumping through). A forged message can only fire an interaction the
-   sender is genuinely standing on, and a press that races the ~1 RTT stale
+   not jumping through). The probe also yields the tile's OWN cell, the
+   identity the completion gate keys on. A forged message can only fire an
+   interaction the sender is genuinely standing on, and a press that races
+   the ~1 RTT stale
    last-accepted position (just stepped onto the tile, report not yet
    accepted) is a harmless no-op until the next accepted report lands on it.
 3. The action then runs in `interactions.ts` (`runInteraction`): a gid →
@@ -164,7 +172,8 @@ registered.
    `Assets/question.json` (`src/game/quest-bank.ts`, env
    `JUNGLE_QUESTIONS_PATH`): `pickRandomQuestion` + a Fisher–Yates
    `shuffleChoices` that tracks the correct index — **the key only ever
-   lives in `ServerPlayer.pendingQuest`** (one unanswered question per
+   lives in `ServerPlayer.pendingQuest`**, which also records the
+   interaction tile the question came from (one unanswered question per
    player: a repeat press while pending is dropped, and `onReconnect`
    clears the slot so a reloaded player's signpost still works). The player
    gets `quest:question` `{question, choices}` (raw plain text, shuffled,
@@ -172,6 +181,17 @@ registered.
    `onCreate`) sanitizes the reported index (`sanitizeQuestAnswer`),
    bounds it by the sent `choiceCount`, grades it against the secret
    `correctIndex`, clears the slot, and replies `quest:result` `{correct}`.
+   A **correct** answer marks the tile it came from completed in the room's
+   `QuestGate` (`quest-gate.ts`, constructed in `onCreate` over
+   `groupRoomObjectsByName(this.map.roomObjects, this.map.doors,
+   this.map.interactions)`): that signpost can never be asked again, and
+   once every showquest interaction linked to a door is completed the door
+   opens for the room — `openDoor` clears the door's cells from the room's
+   validation grid (`clearDoorFromGrid`, so a report sent from inside the
+   doorway doesn't read as buried-in-geometry) and flips the synced
+   `JungleState.doors` entry to `open` (seeded at `onCreate` from the map's
+   door entities; clients clear their own prediction grids and hide the
+   door art from the same schema).
    New interaction tiles = a registry entry in
    `packages/shared/.../interaction.ts` + a handler in `interactions.ts` + the
    gid placed in the map.
