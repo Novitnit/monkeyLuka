@@ -7,8 +7,10 @@
 
 import type Phaser from "phaser";
 import {
+  DEFAULT_PLAYER_PHYSICS,
   PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
+  isBoxInDeadZone,
   type PlayerInput,
 } from "@monkeyluka/shared";
 import { ROOM_HEIGHT, ROOM_WIDTH } from "../map/tiled-map";
@@ -74,6 +76,29 @@ export function createSceneUpdate(
     const input: PlayerInput = { left, right, jump: jumpPressed };
     player.setInput(input);
     player.update(dt);
+
+    // --- Dead zone (464 hazard pits): touching one returns the player to
+    // its checkpoint. The probe runs on the client's own simulated position
+    // (movement is client-simulated, and this wants the freshest spot — the
+    // broadcast snapshot is ~one RTT stale), and it reuses the checkpoint
+    // message so the server re-baselines at the spawn instead of reading the
+    // jump as a teleport violation. `checkpointPending` guards against
+    // re-firing while a return is already in flight (the checkpoint is the
+    // server-chosen spawn, so it can't be forged past the anti-cheat). ---
+    if (
+      !state.checkpointPending &&
+      isBoxInDeadZone(
+        grid,
+        player.physics.x,
+        player.physics.y,
+        DEFAULT_PLAYER_PHYSICS.width,
+        DEFAULT_PLAYER_PHYSICS.height,
+      )
+    ) {
+      player.teleportTo(state.checkpoint.x, state.checkpoint.y);
+      state.checkpointPending = true;
+      room.send(PLAYER_CHECKPOINT_MESSAGE, {});
+    }
 
     // --- Report the predicted state to the server (~20 Hz). Collision is
     // client-side: the server validates this reported trajectory and

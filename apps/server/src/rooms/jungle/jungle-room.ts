@@ -305,6 +305,11 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       writeIfChanged(info, "clinging", player.lastValid.clinging);
       writeIfChanged(info, "facing", player.lastValid.facing);
     }
+
+    // No more dead-zone probing here: the 464 hazard pits are handled on the
+    // client (see `scene/update.ts` — on touch it returns the player to its
+    // checkpoint through `PLAYER_CHECKPOINT_MESSAGE`, whose handler above
+    // re-baselines validation at the spawn).
   }
 
   private registerViolation(client: Client, player: ServerPlayer, reason: string): void {

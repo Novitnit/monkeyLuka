@@ -95,7 +95,14 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   like `tiled-map.ts`)
   extracts collision geometry from the `layer1` tiles — 57/65/109/110/262/287/288
   tiles form one solid block wherever adjacent (a 57 side bordering a slope
-  emits no straight edge; the slope line takes over that boundary). Blocks
+  emits no straight edge; the slope line takes over that boundary) plus the
+  464 dead-zone tiles, which have no wall geometry (an OPEN pit, see
+  `DEAD_ZONE_MASK`) and instead emit their outline as `kind: "hazard"`
+  segments: the mouth rim, the side walls down to the 3px basin floor, and
+  the floor line, tracing the perimeter of each connected 464 group — a
+  face is covered only by an adjacent 464 neighbor (adjacent pits merge
+  into one trench outline); other collision types are ignored, so a pit
+  bordering a wall/floor still emits its own full outline. Blocks
   are traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
   for vertical; `side` tells which side the solid is on) plus the
   109/110/262/287/288 diagonal lines (288's staircase line is drawn as the
@@ -110,7 +117,8 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   (`roomGridSize` in `tiled-map.ts`) is shared by the renderer and the debug
   overlay so both slice the map into rooms identically.
   `src/game/collision/collision-debug.ts` draws those as a Phaser overlay (green
-  vertical walls, blue horizontal floors, orange slopes), toggleable via
+  vertical walls, blue horizontal floors, orange slopes, RED dead-zone pit
+  outlines via the `hazard` kind), toggleable via
   `__jungleCollisionDebug.setEnabled(false)`; `createJungleGame` takes
   `{ collisionDebug?: boolean }` (defaults to the `NEXT_PUBLIC_DEBUG` flag —
   off unless it's "1"/"true").
@@ -140,8 +148,14 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `PLAYER_CHECKPOINT_MESSAGE` to the room, whose always-registered handler
   re-baselines validation at the spawn so the jump isn't a teleport
   violation (the room accepts it unconditionally: the target is the
-  server-chosen spawn, so it can't bypass the anti-cheat). Snapshot
-  reconciliation is **frozen until the server confirms the jump**
+  server-chosen spawn, so it can't bypass the anti-cheat). Touching a 464
+  dead-zone pit runs the **same flow automatically** (not debug-gated):
+  `scene/update.ts` probes the local simulated position with
+  `isBoxInDeadZone` every frame (the AABB must reach the basin floor —
+  bottom at/within 1px above the 3px base) and, on touch, teleports to
+  the checkpoint, freezes reconciliation, and sends the same
+  `PLAYER_CHECKPOINT_MESSAGE` — a pit is a one-way trap back to spawn.
+  Snapshot reconciliation is **frozen until the server confirms the jump**
   (`checkpointPending`): the broadcast is ~one RTT stale and snapping to it
   would undo the teleport and read as a teleport+speed violation — see
   `discoveries/checkpoint-return-race-stale-snapshot-teleport-violations.md`.

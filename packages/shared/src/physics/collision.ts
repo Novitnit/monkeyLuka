@@ -7,6 +7,7 @@
 
 import {
   TILE_SIZE,
+  TILE_DEAD_ZONE,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -31,6 +32,28 @@ const STAIRS_MASK: readonly number[] = [
   0x8001, 0x8001, 0x8001, 0x8001, // rows 8-11: left wall + right wall only
   0x8001, 0x8001, 0x8001, 0xffff, // rows 12-14: walls; row 15: full base
 ];
+
+/**
+ * Bitmask rows of the TILE_DEAD_ZONE (464) hazard pit, row-major from the
+ * cell's top; bit c marks pixel column c solid, exactly like STAIRS_MASK
+ * (bit 0 = col 0, bit 15 = col 15). Rows 13-15 are the fully solid base —
+ * the basin floor; everything above it (rows 0-12) is OPEN: the cell's
+ * mouth and interior are a hole a player walks into and falls to the
+ * bottom of. There are deliberately NO side walls or rim lips — the pit is
+ * an open basin, so adjacent 464 cells merge into one continuous trench
+ * with no 1px seam snags (a rim lip at col 0/15 would sit under a player
+ * resting at a cell seam and trip the anti-cheat's buried-in-geometry
+ * probes, and would add nothing: the top is already walk-off-able). The
+ * solid neighbors beside each pit run (57 walls, the world edge) are what
+ * stop lateral escape — the mask itself only catches falls.
+ */
+const DEAD_ZONE_MASK: readonly number[] = [
+  ...new Array<number>(13).fill(0x0000), // rows 0-12: open mouth + interior
+  0xffff, 0xffff, 0xffff, // rows 13-15: solid base
+];
+
+/** Top row of the dead-zone mask's solid base (rows 13-15 = the basin floor). */
+const DEAD_ZONE_BASE_ROW = 13;
 
 /**
  * Topmost solid pixel row at column `c` of the stairs mask (0..15): the
@@ -83,11 +106,13 @@ function pointInTileSolid(
   if (kind === TILE_SLOPE_TL_BR) return dy <= dx;
   if (kind === TILE_SLOPE_TR_BL) return dx + dy <= TILE_SIZE;
   if (kind === TILE_SLOPE_SHALLOW) return dx + 2 * dy >= 2 * TILE_SIZE;
-  if (kind === TILE_STAIRS) {
-    // Pixel mask: a point is solid inside any solid pixel (16px per tile).
+  if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
+    // Pixel mask (STAIRS_MASK / DEAD_ZONE_MASK): a point is solid inside
+    // any solid pixel (16px per tile).
+    const mask = kind === TILE_STAIRS ? STAIRS_MASK : DEAD_ZONE_MASK;
     const col = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dx)));
     const row = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dy)));
-    return ((STAIRS_MASK[row] ?? 0) & (1 << col)) !== 0;
+    return ((mask[row] ?? 0) & (1 << col)) !== 0;
   }
   // TILE_SLOPE_BR — the mirror of 109, solid below the same line.
   return dx + dy >= TILE_SIZE;
@@ -135,11 +160,14 @@ function aabbTouchesSolid(
     // iff that corner is solid.
     return ox1 + 2 * oy1 >= 2 * TILE_SIZE;
   }
-  if (kind === TILE_STAIRS) {
-    // Pixel mask: the overlap rect [ox0,ox1]×[oy0,oy1] touches solid iff
-    // any solid pixel (c, r) — covering [c, c+1) × [r, r+1) — intersects
-    // it: columns c ∈ [⌊ox0⌋, ⌈ox1⌉−1], rows likewise. This gives the
-    // walls/treads via the mask and leaves the hollow interior open.
+  if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
+    // Pixel mask (STAIRS_MASK / DEAD_ZONE_MASK): the overlap rect
+    // [ox0,ox1]×[oy0,oy1] touches solid iff any solid pixel (c, r) —
+    // covering [c, c+1) × [r, r+1) — intersects it: columns
+    // c ∈ [⌊ox0⌋, ⌈ox1⌉−1], rows likewise. This gives the walls/treads (or
+    // the dead-zone base) via the mask and leaves the hollow interiors
+    // open.
+    const mask = kind === TILE_STAIRS ? STAIRS_MASK : DEAD_ZONE_MASK;
     const c0 = Math.max(0, Math.floor(ox0));
     const c1 = Math.min(TILE_SIZE - 1, Math.ceil(ox1) - 1);
     const r0 = Math.max(0, Math.floor(oy0));
@@ -147,7 +175,7 @@ function aabbTouchesSolid(
     if (c1 < c0 || r1 < r0) return false;
     const cols = ((1 << (c1 - c0 + 1)) - 1) << c0;
     for (let r = r0; r <= r1; r++) {
-      if (((STAIRS_MASK[r] ?? 0) & cols) !== 0) return true;
+      if (((mask[r] ?? 0) & cols) !== 0) return true;
     }
     return false;
   }
@@ -177,6 +205,73 @@ export function isBoxSolid(
     }
   }
   return false;
+}
+
+/**
+ * Does the AABB overlap any solid region of a **dead-zone** cell (tile 464,
+ * the hazard pit in DEAD_ZONE_MASK)? Answering "which kind", unlike
+ * `isBoxSolid`'s boolean: other solids (walls, slopes, the stairs) are
+ * ordinary geometry a player may stand on; the dead-zone mask is a lethal
+ * hazard the web client watches for — it probes its own simulated position
+ * with this every frame and returns the player to its checkpoint on touch
+ * (via `PLAYER_CHECKPOINT_MESSAGE`, the same handler the debug R key uses;
+ * the Colyseus server no longer probes the pits).
+ */
+export function isBoxInDeadZone(
+  grid: SolidGrid,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): boolean {
+  const hw = width / 2;
+  const hh = height / 2;
+  const x0 = Math.floor((x - hw) / TILE_SIZE);
+  const x1 = Math.floor((x + hw) / TILE_SIZE);
+  const y0 = Math.floor((y - hh) / TILE_SIZE);
+  const y1 = Math.floor((y + hh) / TILE_SIZE);
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if (tx < 0 || ty < 0 || tx >= grid.width || ty >= grid.height) continue;
+      if (grid.kinds[ty * grid.width + tx] !== TILE_DEAD_ZONE) continue;
+      if (aabbTouchesDeadZoneFloor(grid, tx, ty, x, y, hw, hh)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Does the AABB overlap the dead-zone pit's hazard floor (the mask's base
+ * rows 13-15)? The shared pixel-mask overlap (`aabbTouchesSolid`) misses a
+ * box at rest in a pit: the vertical resolver leaves its bottom exactly
+ * flush with the base top, so the overlap rect reaches the base row but
+ * never ENTERS it (oy1 == DEAD_ZONE_BASE_ROW, rows [⌊oy0⌋, ⌈oy1⌉−1] stop
+ * at row 12) and the probe would never fire for a real player — the
+ * checkpoint return never triggered. So the hazard probe grants the same
+ * 1px support allowance the stairs seam uses: bottom within 1px above the
+ * base top (or overlapping the base) counts as touching the pit. Flights
+ * over the mouth at altitude (bottom well above the base), and bodies
+ * standing on a floor beside the trench (the overlap rect doesn't even
+ * exist vertically: the trench mouth is ~3 tiles below the floor) still
+ * read as not touching.
+ */
+function aabbTouchesDeadZoneFloor(
+  grid: SolidGrid,
+  tx: number,
+  ty: number,
+  x: number,
+  y: number,
+  hw: number,
+  hh: number,
+): boolean {
+  const left = tx * TILE_SIZE;
+  const top = ty * TILE_SIZE;
+  const ox0 = Math.max(0, x - hw - left);
+  const ox1 = Math.min(TILE_SIZE, x + hw - left);
+  const oy0 = Math.max(0, y - hh - top);
+  const oy1 = Math.min(TILE_SIZE, y + hh - top);
+  if (ox1 <= ox0 || oy1 <= oy0) return false;
+  return oy1 >= DEAD_ZONE_BASE_ROW - 1;
 }
 
 /**
@@ -228,11 +323,13 @@ function slopeSupportsBox(
   // 110 (dy ≤ dx) and 109 (dy ≤ TILE_SIZE − dx) have a solid top edge the
   // whole way across — a box resting on it is standing on the tile. 287 has
   // no flat lip (its face only reaches the top at the far-right corner), so
-  // it is exempt like 262.
+  // it is exempt like 262. Mask shapes (288, 464) resolve their own
+  // stepped/basin surfaces in the branches below.
   if (
     kind !== TILE_SLOPE_BR &&
     kind !== TILE_SLOPE_SHALLOW &&
     kind !== TILE_STAIRS &&
+    kind !== TILE_DEAD_ZONE &&
     dyBottom <= SLOPE_TOUCH_EPS
   ) {
     return true;
@@ -275,6 +372,16 @@ function slopeSupportsBox(
     const c1 = Math.max(0, Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1));
     minSurf = stairsTopRow(c1);
     maxSurf = stairsTopRow(c0) + 1;
+  } else if (kind === TILE_DEAD_ZONE) {
+    // 464 hazard pit: an open basin — every column's surface is the base
+    // (top row 13), so the support band is the 262-style deep surface: a
+    // box standing on the basin floor rides (walks the trench freely, and
+    // adjacent 464 cells read as one continuous floor), a rim-level walker
+    // over the open mouth has no surface at its feet and drops in (never
+    // wall-blocked: the mouth rows are open, so horizontal penetration
+    // never even sees the cell).
+    minSurf = DEAD_ZONE_BASE_ROW;
+    maxSurf = DEAD_ZONE_BASE_ROW + 1;
   } else {
     minSurf = TILE_SIZE - dx1;
     maxSurf = TILE_SIZE - dx0;
@@ -385,20 +492,22 @@ export function horizontalPenetration(
                 dx1 - Math.max(0, 2 * TILE_SIZE - 2 * dyBottom),
               )
             : Math.max(0, TILE_SIZE - dx0);
-      } else if (kind === TILE_STAIRS) {
-        // 288 staircase — a pixel mask, not a single face: the box meets
-        // the shape at the nearest solid pixel column in the rows its
-        // leading edge spans (right-mover: the leftmost solid column,
-        // left-mover: the rightmost), and the deepest overlapped row wins.
-        // A wall face and a tread face resolve by the same nearest-column
-        // rule; a box riding the stepped surface was exempted above.
+      } else if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
+        // 288 staircase / 464 hazard pit — pixel masks, not a single face:
+        // the box meets the shape at the nearest solid pixel column in the
+        // rows its leading edge spans (right-mover: the leftmost solid
+        // column, left-mover: the rightmost), and the deepest overlapped
+        // row wins. A wall face and a tread face resolve by the same
+        // nearest-column rule; a box riding the stepped/basin surface was
+        // exempted above.
+        const mask = kind === TILE_STAIRS ? STAIRS_MASK : DEAD_ZONE_MASK;
         const col0 = Math.max(0, Math.floor(dx0));
         const col1 = Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1);
         const row0 = Math.max(0, Math.floor(dyTop));
         const row1 = Math.min(TILE_SIZE - 1, Math.ceil(dyBottom) - 1);
         const cols = ((1 << (col1 - col0 + 1)) - 1) << col0;
         for (let r = row0; r <= row1; r++) {
-          const bits = (STAIRS_MASK[r] ?? 0) & cols;
+          const bits = (mask[r] ?? 0) & cols;
           if (bits === 0) continue;
           let c = dir > 0 ? col0 : col1;
           if (dir > 0) {
@@ -532,22 +641,39 @@ export function verticalPenetration(
         // surface with at most a substep of dip, well inside the tolerance.
         if (dir > 0 && bottomRel > TILE_SIZE + SLOPE_TOUCH_EPS) continue;
         surfaceY = dir > 0 ? top + TILE_SIZE - edgeMax / 2 : top + TILE_SIZE;
-      } else if (kind === TILE_STAIRS) {
-        // 288 staircase: landing binds the topmost tread under the moving
-        // edge — the shallowest point of the stepped surface, sampled at
-        // the box's rightmost column (topRow(c) = 7 − ⌊c/2⌋), the same
-        // ride-on-the-leading-corner rule as 262/287. The underside is
-        // flat: the base row is solid at every column, so a rising box
-        // contacts the cell's bottom edge, never the treads. `dir > 0`
-        // skips boxes whose bottom is below the cell (an overhang
-        // under-runner), like 262/287.
+      } else if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
+        // 288 staircase / 464 hazard pit — pixel-mask landing: 288 binds
+        // the topmost tread under the moving edge — the shallowest point
+        // of the stepped surface, sampled at the box's rightmost column
+        // (topRow(c) = 7 − ⌊c/2⌋), the same ride-on-the-leading-corner
+        // rule as 262/287. 464 binds the mask's shallowest top row under
+        // the edge's whole span: a box straddling a lip (cols 0/15) rests
+        // on the rim (row 0), a box fully over the open interior sinks to
+        // the base (row 13). Both undersides are flat — the base row is
+        // solid at every column, so a rising box contacts the cell's
+        // bottom edge, never the treads or the lips' undersides.
+        // `dir > 0` skips boxes whose bottom is below the cell (an
+        // overhang under-runner), like 262/287.
         if (dir > 0 && bottomRel > TILE_SIZE + SLOPE_TOUCH_EPS) continue;
         if (dir > 0) {
-          const c1 = Math.max(
-            0,
-            Math.min(TILE_SIZE - 1, Math.ceil(edgeMax) - 1),
-          );
-          surfaceY = top + stairsTopRow(c1);
+          if (kind === TILE_STAIRS) {
+            const c1 = Math.max(
+              0,
+              Math.min(TILE_SIZE - 1, Math.ceil(edgeMax) - 1),
+            );
+            surfaceY = top + stairsTopRow(c1);
+          } else {
+            // 464 hazard pit: bind the DEEPEST solid top row under the
+            // edge — the basin floor (the base at DEAD_ZONE_BASE_ROW). The
+            // 262/287 "shallowest surface under the span" rule is right
+            // for climbing a ramp, but wrong for a hole: the pit's mouth
+            // is entirely open (no rim lips), so the only landing surface
+            // is the base itself; a dropping box must sink to it rather
+            // than stopping at the mouth's edge (flooring the edge
+            // columns reads as a shallow surface and caught every fall at
+            // a cell seam).
+            surfaceY = top + DEAD_ZONE_BASE_ROW;
+          }
         } else {
           surfaceY = top + TILE_SIZE;
         }

@@ -39,6 +39,12 @@
  *         continuous 32px ramp), plus a full-height right wall, a left
  *         wall from mid-height down, and a fully solid base row — the
  *         interior between the treads and the base is open.
+ * - 464 – dead-zone tile (a pixel mask, see DEAD_ZONE_MASK in
+ *         collision.ts): an OPEN hazard pit — rows 0-12 empty (the mouth)
+ *         and a fully solid 3px base (rows 13-15). A player walks off the
+ *         mouth and sinks to the base; touching it returns the player to
+ *         its checkpoint (the web client probes its local simulation with
+ *         `isBoxInDeadZone` and reuses the checkpoint message).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */

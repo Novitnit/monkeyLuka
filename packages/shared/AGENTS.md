@@ -81,11 +81,17 @@ or Colyseus imports — so it can also be unit-tested directly.
   pixel-mask shape in `collision.ts`'s `STAIRS_MASK`, not an analytic wedge:
   eight 2px treads stepping down from the top-right to the bottom-left — the
   mirror of 287 — plus a full-height right wall, a left wall from mid-height
-  down, and a solid base row, hollow between the treads and the base), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
+  down, and a solid base row, hollow between the treads and the base),
+  `TILE_DEAD_ZONE` (464, the dead-zone pit — a pixel-mask open basin in
+  `collision.ts`'s `DEAD_ZONE_MASK`: rows 13-15 are a solid 3px base, rows
+  0-12 are entirely open; it stays its own kind so the penetration code
+  never treats it as a slope), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
   names from these so rendering and physics can't drift.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
-  queries; `gridPixelSize` for world bounds.
+  queries; `isBoxInDeadZone` for the dead-zone touch probe (the web client
+  calls it every frame to gate the automatic checkpoint return on 464
+  touch); `gridPixelSize` for world bounds.
 - Slope contact rules (see
   `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` for the
   full diagnosis): 110/109 are corner brackets whose top edge is solid across
@@ -125,6 +131,28 @@ or Colyseus imports — so it can also be unit-tested directly.
   is dy 7) so the 287 → 288 seam settles instead of jamming the walker at
   the left wall's top row — a 287 + 288 pair is one continuous ramp to the
   top of 288.
+  464 is the dead-zone tile — a **pixel mask** (`DEAD_ZONE_MASK` in
+  collision.ts): an OPEN basin. Rows 0-12 are empty (the mouth and
+  interior — nothing at all, no rim lips or side walls), rows 13-15 are a
+  fully solid 3px base. A player walks off the mouth like a ledge and
+  sinks to the base; adjacent 464 cells merge into one continuous trench
+  with no seam snags (a 1px rim lip under a player resting at a seam would
+  trip the anti-cheat's buried-in-geometry probes), and a body inside is
+  blocked laterally only by the SOLID neighbors beside the run (falling in
+  is a trap — no jump clears the rim-to-neighbor wall). The five queries
+  branch on the mask: point/AABB read only the base; the support band is
+  the base surface (dyBottom ≈ 13 rides — a box on the basin floor walks
+  the trench), so a rim-level walker over the open mouth is unsupported
+  and drops; vertical penetration binds the DEEPEST surface (the base —
+  sampling the shallowest would catch falls on the mouth's edge);
+  horizontal penetration sees only the base row (rows 13-15 are solid, so
+  an unsupported box near the floor is blocked by the base face, a
+  supported one slides freely). The web client probes its local simulation
+  against it via `isBoxInDeadZone` (AABB vs the mask's solid pixels,
+  dead-zone cells only) and, on touch, returns the player to its
+  checkpoint via `PLAYER_CHECKPOINT_MESSAGE` (the same handler the debug R
+  key uses); the server never probes the pits. The web debug overlay draws
+  its outline as red `hazard` segments.
 - `createPlayerState()` + `stepPlayer(state, input, grid, dt, config)` — the
   deterministic player step (run accel, gravity, coyote/buffered jump, wall
   cling: airborne + moving into a wall + jump press grabs the wall — the

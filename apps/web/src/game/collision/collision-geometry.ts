@@ -32,6 +32,16 @@
  *         its diagonal, with the full-height right wall and the base row
  *         emitted as wall and floor boundary edges where they face open
  *         space.
+ * - 464 – dead-zone tile (a pixel-mask hazard pit, see DEAD_ZONE_MASK in
+ *         @monkeyluka/shared): an OPEN basin — no solid wall geometry to
+ *         trace, just a 3px base at the cell's bottom. It is emitted as
+ *         `kind: "hazard"` segments (the debug overlay draws them RED):
+ *         the mouth rim (top edge), the side walls down to the basin
+ *         floor, and the floor line, drawn around the perimeter of each
+ *         connected 464 group — a face is covered only by an adjacent 464
+ *         neighbor (other collision types are ignored, so the pit outline
+ *         is self-contained and never hidden under a bordering wall/floor
+ *         block's own edges).
  *
  * A 57 side touching a 109/110 tile emits no straight edge — the slope line
  * takes over that part of the block boundary, so the two belong to the same
@@ -40,6 +50,7 @@
 
 import {
   COLLISION_LAYER_NAME,
+  TILE_DEAD_ZONE,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -84,9 +95,10 @@ export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
 /**
  * "floor" = a horizontal boundary line (top or bottom of a group); "wall" =
  * a vertical boundary line (left or right side). Debug overlay colors
- * floors blue and walls green.
+ * floors blue and walls green; "hazard" marks the dead-zone (464) pit
+ * outline, drawn red.
  */
-export type EdgeKind = "floor" | "wall";
+export type EdgeKind = "floor" | "wall" | "hazard";
 
 /** Which tile side a boundary edge lies on; the solid group is behind it. */
 export type TileSide = "top" | "bottom" | "left" | "right";
@@ -285,6 +297,63 @@ export function buildCollisionGeometry(
             x2: left + tw,
             y2: top + th,
             kind: "floor",
+            side: "bottom",
+          });
+        }
+      } else if (gid === TILE_DEAD_ZONE) {
+        // 464 dead-zone pit: an OPEN basin (rows 0-12 open, a 3px solid
+        // base at rows 13-15 — see DEAD_ZONE_MASK in @monkeyluka/shared), so
+        // there is no wall geometry to trace like the slopes. The hazard is
+        // emitted as its own `hazard` segments — the mouth rim (top edge),
+        // the two side walls down to the basin floor, and the floor line —
+        // tracing the perimeter of each connected 464 group: a face is
+        // covered only by an adjacent 464 neighbor (adjacent pits merge
+        // into one trench outline). Other collision types are deliberately
+        // NOT consulted, unlike the 57/288 block edges — a bordering 57
+        // wall or floor still gets the pit's own outline drawn (they
+        // overlap visually in the debug overlay, but the hazard shape stays
+        // self-contained).
+        const baseTop = top + th - 3; // top of the 3px base rows (13-15)
+        const isDeadZone = (nx: number, ny: number): boolean =>
+          nx >= 0 && ny >= 0 && nx < width && ny < height &&
+          gids[ny * width + nx] === TILE_DEAD_ZONE;
+        if (!isDeadZone(tx, ty - 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top,
+            x2: left + tw,
+            y2: top,
+            kind: "hazard",
+            side: "top",
+          });
+        }
+        if (!isDeadZone(tx + 1, ty)) {
+          shapeEdges.push({
+            x1: left + tw,
+            y1: top,
+            x2: left + tw,
+            y2: baseTop,
+            kind: "hazard",
+            side: "right",
+          });
+        }
+        if (!isDeadZone(tx - 1, ty)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top,
+            x2: left,
+            y2: baseTop,
+            kind: "hazard",
+            side: "left",
+          });
+        }
+        if (!isDeadZone(tx, ty + 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: baseTop,
+            x2: left + tw,
+            y2: baseTop,
+            kind: "hazard",
             side: "bottom",
           });
         }

@@ -39,6 +39,14 @@
  *         stepped tread tops at dy = 7 − ⌊c/2⌋). Unlike 287 there is no
  *         flush foot: the treads rest on walls, so climbing it is like a
  *         staircase (or a ramp's continuation), not a ground-level walk-on.
+ * - 464 – dead-zone tile (the hazard pit, a pixel mask like 288's): an
+ *         OPEN basin — rows 0-12 empty (the mouth and interior, no rim
+ *         lips or side walls) with a fully solid 3px base at the cell's
+ *         bottom (rows 13-15), so a player walking over it at rim level
+ *         drops into the basin instead of standing on a flat top. The mask
+ *         is the collision shape (see DEAD_ZONE_MASK in collision.ts);
+ *         touching it returns the player to its checkpoint (the web client
+ *         probes its local simulation with isBoxInDeadZone).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */
@@ -78,6 +86,19 @@ export const TILE_SLOPE_SHALLOW = 287;
  * lateral motion; the tread tops (dy = 7 − ⌊c/2⌋) are the landing surface.
  */
 export const TILE_STAIRS = 288;
+/**
+ * Dead-zone tile: a pixel-mask hazard pit (see DEAD_ZONE_MASK in
+ * collision.ts) — an OPEN basin with a 3px solid base at the cell's
+ * bottom and nothing above it (no rim lips or side walls: a player walks
+ * off the mouth and sinks to the floor). Touching it returns the player
+ * to its checkpoint (the web client probes its local simulation with
+ * isBoxInDeadZone), and the debug overlay draws its collision lines red.
+ * It must stay its own kind — the
+ * penetration code dispatches on kind, so folding it into TILE_SOLID (or
+ * leaving it to the slope fallthrough) would make it a plain block / a
+ * 262-shaped wedge instead of the basin.
+ */
+export const TILE_DEAD_ZONE = 464;
 /** Tiled layer name the collision geometry and physics read. */
 export const COLLISION_LAYER_NAME = "layer1";
 
@@ -100,7 +121,8 @@ export type TileKind =
   | typeof TILE_SLOPE_TR_BL
   | typeof TILE_SLOPE_BR
   | typeof TILE_SLOPE_SHALLOW
-  | typeof TILE_STAIRS;
+  | typeof TILE_STAIRS
+  | typeof TILE_DEAD_ZONE;
 
 /** A compact grid of tile kinds (0 = open, otherwise the gid). */
 export interface SolidGrid {
@@ -122,7 +144,8 @@ export function buildTileGrid(layer: CollisionLayerData): SolidGrid {
       gid === TILE_SLOPE_TR_BL ||
       gid === TILE_SLOPE_BR ||
       gid === TILE_SLOPE_SHALLOW ||
-      gid === TILE_STAIRS
+      gid === TILE_STAIRS ||
+      gid === TILE_DEAD_ZONE
         ? gid === TILE_SOLID_65
           ? TILE_SOLID
           : gid

@@ -85,6 +85,14 @@ only validates each report and relays it:
    patch churn; velocity is clamped to the physics ceiling since it is
    display-only — the horizontal clamp follows `max(runSpeed,
    wallJumpSpeed)` so wall-jump launches aren't undercut).
+   Dead-zone pits (464) are handled **client-side**, not here: the room no
+   longer probes accepted reports (`isBoxInDeadZone` now lives only in the
+   web client's `scene/update.ts`, which returns the player to its
+   checkpoint through `PLAYER_CHECKPOINT_MESSAGE` — see below). The probe's
+   1px support allowance (the flush resting pose never entices the
+   pixel-mask overlap — the probe needs `oy1 >= DEAD_ZONE_BASE_ROW - 1`)
+   is why the return triggers at all: see
+   `discoveries/dead-zone-touch-log-never-fired-flush-pose.md`.
    A failing report **stops the player** — the broadcast keeps the last
    accepted position with velocity zeroed — and increments the violation
    counter; the client is kicked at `ANTI_CHEAT.maxViolations`. After a stop
@@ -100,7 +108,7 @@ several individually-plausible reports is not caught (catch it by re-enabling
 server-side re-simulation if that ever matters). Set
 `JUNGLE_DEBUG_VALIDATION=1` to log rejected reports with their delta/flags.
 
-### Checkpoint return (R key, debug)
+### Checkpoint return (R key, debug; 464 pit, automatic)
 
 The room always registers the `PLAYER_CHECKPOINT_MESSAGE` handler: it
 teleports the player back to the spawn point (`PLAYER_SPAWN`), re-baselines
@@ -112,7 +120,12 @@ spawn. Gating it on a server debug flag would instead drop or kick players
 when the web/server flags mismatch (see
 `discoveries/checkpoint-message-drops-player-unregistered-handler.md`). The
 **R key itself is debug-only** on the client (`NEXT_PUBLIC_DEBUG` in
-`apps/web`), which is the only flag that needs setting.
+`apps/web`), which is the only flag that needs setting. Touching a 464
+dead-zone pit makes the client send this same message **automatically**
+(`scene/update.ts` probes the local simulated position with
+`isBoxInDeadZone` every frame and, on touch, runs the identical teleport +
+`checkpointPending` flow) — same handler, same spawn re-baseline, so the
+automatic return can't be forged into anything but a reset to spawn either.
 
 The server re-baselines its validation state at the spawn point and broadcasts
 the jump, so the client's reports validate immediately after it. Clients

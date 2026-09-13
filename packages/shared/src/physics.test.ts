@@ -12,6 +12,7 @@ import {
   DEFAULT_PLAYER_PHYSICS,
   PLAYER_SPAWN,
   TILE_SIZE,
+  TILE_DEAD_ZONE,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -21,6 +22,7 @@ import {
   buildTileGrid,
   createPlayerState,
   gridPixelSize,
+  isBoxInDeadZone,
   isBoxSolid,
   isPointSolid,
   maxPlayerSpeed,
@@ -743,6 +745,203 @@ describe("staircase tile (288, 2:1 steps)", () => {
   });
 });
 
+describe("dead zone tile (464, hazard pit)", () => {
+  test("point solidity matches the pixel mask", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_DEAD_ZONE]));
+    // Rows 0-12 are the open mouth + interior of the basin; rows 13-15 the
+    // fully solid base. No rim lips or side walls: the pit is a hole.
+    expect(isPointSolid(grid, 0.4, 0.4)).toBe(false); // open at the mouth
+    expect(isPointSolid(grid, 0.4, 6)).toBe(false); // open interior
+    expect(isPointSolid(grid, 8, 12)).toBe(false); // still open above the base
+    expect(isPointSolid(grid, 8, 13.5)).toBe(true); // base row
+    expect(isPointSolid(grid, 0.4, 15.5)).toBe(true); // base at the lip column too
+    expect(isPointSolid(grid, 15.5, 14.5)).toBe(true); // base at the right edge
+  });
+
+  test("isBoxInDeadZone only fires for 464 cells, over their solid pixels", () => {
+    const gids = new Array<number>(4 * 2).fill(0);
+    gids[1] = TILE_DEAD_ZONE; // (1,0)
+    gids[2 * 4 + 2] = TILE_SOLID; // (2,1) — ordinary floor, not a hazard
+    const grid = buildTileGrid(layer(4, 2, gids));
+    // Inside the pit (over the base) → touching.
+    expect(isBoxInDeadZone(grid, 1 * TILE_SIZE + 8, 12, 10, 10)).toBe(true);
+    // Floating in the open mouth (nothing solid below yet) → not touching.
+    expect(isBoxInDeadZone(grid, 1 * TILE_SIZE + 8, 6, 6, 4)).toBe(false);
+    // Over the ordinary 57 floor → never a dead zone.
+    expect(isBoxInDeadZone(grid, 2 * TILE_SIZE + 8, 28, 10, 10)).toBe(false);
+    // Empty cell → not a dead zone.
+    expect(isBoxInDeadZone(grid, 0, 0, 10, 10)).toBe(false);
+  });
+
+  test("a player at rest on the basin floor IS in the dead zone (flush-bottom bug)", () => {
+    // Regression for the never-firing touch probe: `stepPlayer` resolves a
+    // fall in the pit to a resting pose whose bottom edge is exactly flush
+    // with the base top (dyBottom == DEAD_ZONE_BASE_ROW), and the pixel-mask
+    // overlap rect ends AT that row without entering it — so the bare mask
+    // probe returned false for every real 13x14 player and the checkpoint
+    // return gated by it never triggered. The probe grants a 1px support
+    // allowance: the flush resting pose, and a body hovering up to 1px above
+    // the floor, must both read as touching the pit.
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_DEAD_ZONE;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    // Feet flush on the base (center y = 16+13−h/2, the same pose as the
+    // anti-cheat validation test) → touching.
+    expect(
+      isBoxInDeadZone(
+        grid,
+        2 * TILE_SIZE + 8,
+        1 * TILE_SIZE + 13 - config.height / 2,
+        config.width,
+        config.height,
+      ),
+    ).toBe(true);
+    // The same pose on an ordinary 57 floor beside the pit → never a hazard.
+    gids[1 * 8 + 1] = TILE_SOLID;
+    expect(
+      isBoxInDeadZone(
+        grid,
+        1 * TILE_SIZE + 4,
+        1 * TILE_SIZE + 13 - config.height / 2,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
+    // The full sim: walk off a floor into the pit, rest, probe reads true.
+    const state = createPlayerState(config);
+    state.x = 1 * TILE_SIZE + 4; // on the floor, left of the pit
+    state.y = 1 * TILE_SIZE - config.height / 2;
+    state.grounded = true;
+    state.vy = 0;
+    for (let i = 0; i < 240; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      // Resting on the basin floor (center y = 16+13−h/2 ≈ 22, vs 9 on the
+      // rim floor) — stop before it walks off the far side of the pit cell.
+      if (state.grounded && state.y > 1 * TILE_SIZE + 2) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(
+      isBoxInDeadZone(
+        grid,
+        state.x,
+        state.y,
+        config.width,
+        config.height,
+      ),
+    ).toBe(true);
+  });
+
+  test("a box falling into the pit sinks to the basin floor, not the rim", () => {
+    // 464 at (2,1) floating in open air: a falling box drops through the
+    // open mouth and rests on the base (row 13, feet at 16+13=29 → center 22).
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_DEAD_ZONE;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 8;
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 900; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(
+      TILE_SIZE + 13 - config.height / 2,
+      3,
+    );
+  });
+
+  test("a rim-level walker steps into the pit and drops to the basin floor", () => {
+    // Solid floor at (1,1), 464 pit at (2,1): walking right at rim level
+    // must NOT be wall-blocked by the 1px lip — the box rides it for a
+    // frame, then drops into the open interior and lands on the base.
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 1] = TILE_SOLID;
+    gids[1 * 8 + 2] = TILE_DEAD_ZONE;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    const state = createPlayerState(config);
+    state.x = 1 * TILE_SIZE + 4; // on the floor, left of the pit
+    state.y = 1 * TILE_SIZE - config.height / 2; // feet on the floor top
+    state.grounded = true;
+    state.vy = 0;
+    let dropped = false;
+    for (let i = 0; i < 240; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      // Once the feet leave the floor top, it has dropped into the basin.
+      if (state.y + config.height / 2 > 1 * TILE_SIZE + 2) dropped = true;
+      if (dropped && state.grounded) break;
+    }
+    expect(dropped).toBe(true);
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(
+      1 * TILE_SIZE + 13 - config.height / 2,
+      3,
+    );
+  });
+
+  test("a body inside the basin is wall-blocked by a solid neighbor — lips never eject it", () => {
+    // 464 pit at (2,1) with a solid floor at (3,1) to the right. The box
+    // stands on the basin floor, walks right, and must stop at the solid
+    // neighbor's face — the 4px rim lips must NOT shove it around (or off
+    // the base) just because its head grazes them near a seam.
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_DEAD_ZONE;
+    gids[1 * 8 + 3] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 2; // inside the basin
+    state.y = 1 * TILE_SIZE + 13 - config.height / 2; // feet on the base
+    state.grounded = true;
+    state.vy = 0;
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+    }
+    // Blocked at the solid floor's left face (x = 48): center 48 − w/2.
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(1 * TILE_SIZE + 13 - config.height / 2, 3);
+    expect(state.x).toBeCloseTo(3 * TILE_SIZE - config.width / 2, 2);
+  });
+
+  test("standing in the dead zone passes anti-cheat validation", () => {
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_DEAD_ZONE;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    // The box rests on the basin floor; its outline is flush against the
+    // base top — the probe points (inset 1px) must all read open air, so a
+    // legitimately sunken player is never flagged as buried-in-geometry.
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 8;
+    state.y = 1 * TILE_SIZE + 13 - config.height / 2;
+    const violations = validatePositionReport(
+      grid,
+      { px: state.x, py: state.y },
+      { x: state.x, y: state.y },
+      null,
+      null,
+      config,
+    );
+    expect(violations).toEqual([]);
+  });
+});
+
 describe("the real jungle map", () => {
   // Loads the actual Assets/map/main.json collision layer (60×17 tiles) —
   // the tests exercise the game's real geometry, not an approximation.
@@ -839,7 +1038,12 @@ describe("the real jungle map", () => {
     expect(state.y).toBeLessThanOrEqual(world.height - config.height / 2 + 1e-6);
   });
 
-  test("falls into the pit and stops at the world floor", () => {
+  test("falls into the pit and stops on the dead-zone basin floor", () => {
+    // x=192 drops into the gap between the platforms at cols 13-22; below it
+    // sits a TILE_DEAD_ZONE (464) pit at (12,16) — the hazard basin's
+    // base (rows 13-15, top at worldHeight−3) catches the fall. The world
+    // floor would be at worldHeight, but the dead zone's 3px base (the
+    // basin floor) is what stops it.
     const grid = jungleGrid();
     const state = createPlayerState(config);
     state.x = 12 * TILE_SIZE; // middle of the gap between platforms
@@ -849,14 +1053,18 @@ describe("the real jungle map", () => {
       if (state.grounded) break;
     }
     expect(state.grounded).toBe(true);
-    expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
+    expect(state.y).toBeCloseTo(
+      gridPixelSize(grid).height - 3 - config.height / 2,
+      3,
+    );
   });
 
-  test("walking left off the floor's edge drops into the pit", () => {
+  test("walking left off the floor's edge drops into the dead-zone pit", () => {
     // The redesigned map's left floor (row 13) runs from x=16 to x=144; the
     // spawn lands mid-floor, so the old “over the void” start no longer
-    // exists. Walking left past x=16 must fall over the edge and stop at
-    // the world floor.
+    // exists. Walking left past x=16 falls over the edge into the 464
+    // dead-zone pit at cols 0-1 (row 16): the basin's base (top at
+    // worldHeight−3) stops the fall, not the world floor.
     const grid = jungleGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
@@ -870,7 +1078,10 @@ describe("the real jungle map", () => {
     }
     expect(fell).toBe(true);
     expect(state.grounded).toBe(true);
-    expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
+    expect(state.y).toBeCloseTo(
+      gridPixelSize(grid).height - 3 - config.height / 2,
+      3,
+    );
   });
 
   test("walks the full left section from spawn without tripping the anti-cheat", () => {

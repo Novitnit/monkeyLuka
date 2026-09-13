@@ -164,7 +164,8 @@ see `discoveries/agents.md` for the format and conventions.
 
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics.ts` (tile
-collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes) and renders its own prediction
+collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes,
+464 dead-zone pits) and renders its own prediction
 with no server round-trip. Slope contacts: 110/109 landings rest on the flat
 top lip
 (never hoist an under-runner walking below a chamfer); 262 climbing rides the
@@ -181,7 +182,25 @@ its seam binds the walker at 287's apex (dy 8) onto 288's left tread (dy 7)
 through a 1px-deep support allowance; see collision.ts's `STAIRS_MASK`) —
 documented in
 `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` and
-`discoveries/shallow-ramp-tile-287-half-height-diagonal.md`. The Colyseus
+`discoveries/shallow-ramp-tile-287-half-height-diagonal.md`. 464 is the
+dead-zone pit (a pixel-mask OPEN basin — a 3px solid base at the cell's
+bottom, nothing else, so a player walks off the mouth and sinks to the
+floor; adjacent 464s merge into one continuous trench and a body inside is
+blocked laterally only by the solid walls beside the run, so falling in is a
+trap — and now a one-way door: reaching the basin floor returns the player
+to its checkpoint automatically); the
+web client probes its own simulated position against the pits every frame
+(`isBoxInDeadZone` on the shared grid — the AABB must overlap the pit cell
+with its bottom at/within 1px above the basin-floor base, so a player
+standing on it, or falling into it, touches, while a player on the ground
+beside a pit, or flying high over the mouth, never touches) and, on touch,
+returns the player to its checkpoint through the exact
+`PLAYER_CHECKPOINT_MESSAGE` flow the debug R key uses (teleport locally,
+freeze reconciliation until the server confirms, and let the room
+re-baseline at the spawn so the jump isn't a teleport violation) — the
+Colyseus room no longer probes or logs the pits, and the web
+debug overlay draws the pit outline RED (`hazard` collision segments). The
+Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
 abnormal speed / buried-in-geometry via `validatePositionReport`) and

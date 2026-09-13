@@ -2,8 +2,9 @@
  * Phaser debug overlay for the collision geometry: draws every boundary edge
  * of the collision blocks on top of the map, clipped to each room the same
  * way the tiles are. Horizontal edges (floors) are blue, vertical edges
- * (walls) are green, and the 110/109/262/287 slope lines (orange) take over
- * the block boundary wherever they touch a 57 tile.
+ * (walls) are green, the 110/109/262/287 slope lines (orange) take over the
+ * block boundary wherever they touch a 57 tile, and the dead-zone (464)
+ * pit outline is drawn RED (the `hazard` segments from collision-geometry).
  *
  * The lines are children of their room containers, so they inherit the
  * room's scale/position. They are visible by default and can be toggled at
@@ -29,6 +30,8 @@ export interface CollisionDebugOptions {
   floorColor?: number;
   /** Diagonal slope color (default orange). */
   diagonalColor?: number;
+  /** Dead-zone hazard pit outline color (default red). */
+  hazardColor?: number;
   /** Line width in room-local pixels; scales with the room (default 2). */
   lineWidth?: number;
   /** Room size the geometry is clipped to; must match the map render. */
@@ -97,6 +100,7 @@ export function createCollisionDebug(
   const wallColor = options.wallColor ?? 0x00ff00;
   const floorColor = options.floorColor ?? 0x00aaff;
   const diagonalColor = options.diagonalColor ?? 0xff9900;
+  const hazardColor = options.hazardColor ?? 0xff0000;
   const lineWidth = options.lineWidth ?? 2;
 
   // Room grid: same row-major layout as the map renderer.
@@ -138,13 +142,16 @@ export function createCollisionDebug(
       );
     };
 
-    // Walls (vertical) first, then floors (horizontal), then slopes, so
-    // corners read cleanly.
+    // Walls (vertical) first, then floors (horizontal), then the dead-zone
+    // hazard pits, then slopes, so corners read cleanly.
     for (const s of geometry.segments) {
       if (s.kind === "wall") drawSegment(s, wallColor);
     }
     for (const s of geometry.segments) {
       if (s.kind === "floor") drawSegment(s, floorColor);
+    }
+    for (const s of geometry.segments) {
+      if (s.kind === "hazard") drawSegment(s, hazardColor);
     }
     for (const d of geometry.diagonals) drawSegment(d, diagonalColor);
 
