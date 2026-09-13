@@ -10,123 +10,12 @@ import {
   horizontalPenetration,
   verticalPenetration,
   wallBeside,
-} from "./collision";
-import { TILE_SIZE, gridPixelSize } from "./tiles";
-import type { SolidGrid } from "./tiles";
-
-/** Input axes the player sends each step; jump is a pressed edge. */
-export interface PlayerInput {
-  left: boolean;
-  right: boolean;
-  /** True on the step the jump key was pressed (not held). */
-  jump: boolean;
-}
-
-export interface PlayerPhysicsConfig {
-  /** Collider size — slightly smaller than the 16px sprite for forgiveness. */
-  width: number;
-  height: number;
-  /** Horizontal run speed, px/s. */
-  runSpeed: number;
-  /** Horizontal acceleration (reaching run speed), px/s². */
-  acceleration: number;
-  /** Deceleration when no horizontal input, px/s². */
-  deceleration: number;
-  /** Gravity, px/s² (positive pulls down). */
-  gravity: number;
-  /** Upward impulse of a jump, px/s. */
-  jumpSpeed: number;
-  /** Horizontal launch of a wall jump (away from the wall), px/s. */
-  wallJumpSpeed: number;
-  /** Upward impulse of a wall jump, px/s. */
-  wallJumpLift: number;
-  /** Terminal fall speed, px/s (also the anti-cheat speed ceiling). */
-  maxFallSpeed: number;
-  /** Seconds a jump is still accepted after walking off a ledge. */
-  coyoteTime: number;
-  /** Seconds a jump press stays buffered before it expires. */
-  jumpBufferTime: number;
-  /** Longest single collision substep (prevents tunneling), px. */
-  maxSubstep: number;
-}
-
-/** Where the player spawns (map pixels, AABB center). */
-export const PLAYER_SPAWN = { x: (3*16)+8, y: (12*16) } as const;
-
-/**
- * Tuning for the jungle monkey. Chosen so the platforms are reachable: the
- * runway above the left floor (via the 287/288 ramps) sits 16px higher — a
- * full jump rises ~34px and covers ~90px horizontally.
- */
-export const DEFAULT_PLAYER_PHYSICS: PlayerPhysicsConfig = {
-  width: 13,
-  height: 14,
-  runSpeed: 55,
-  acceleration: 640,
-  deceleration: 900,
-  gravity: 480,
-  jumpSpeed: 140,
-  // Wall jump: up + away, stronger vertically than a ground jump so it can
-  // climb a one-tile wall face (rise ~ 170²/(2·480) ≈ 30px, airtime
-  // ~ 2·170/480 ≈ 0.71s — enough to cross the 32px platform gap while
-  // steering). hypot(170, 96) ≈ 195 < maxFallSpeed so the anti-cheat speed
-  // ceiling is never undercut.
-  wallJumpSpeed: 96,
-  wallJumpLift: 170,
-  maxFallSpeed: 340,
-  coyoteTime: 0.1,
-  jumpBufferTime: 0.12,
-  maxSubstep: TILE_SIZE / 2,
-};
-
-/** Mutable per-player physics state (serializable, plain data). */
-export interface PlayerPhysicsState {
-  /** AABB center, map pixels, y down. */
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  grounded: boolean;
-  /** 1 facing right, -1 facing left (drives sprite flip). */
-  facing: 1 | -1;
-  /** Grabbed a wall: hanging mid-air beside it (no gravity, no lateral drift). */
-  clinging: boolean;
-  /** Wall side being clung to: 1 = wall on the right, -1 = wall on the left. */
-  clingDir: 1 | -1;
-  /** Seconds of coyote leniency remaining (0 = none). */
-  coyoteTime: number;
-  /** Seconds of buffered jump remaining (0 = none). */
-  jumpBufferTime: number;
-}
-
-export interface PlayerStepResult {
-  /** Grounded after this step. */
-  grounded: boolean;
-  /** Became grounded this step (landed a jump/fall). */
-  landed: boolean;
-  /** -1 / +1 when a wall blocked horizontal motion this step, else 0. */
-  hitWall: -1 | 0 | 1;
-  /** Hit a ceiling this step. */
-  hitCeiling: boolean;
-}
-
-/** Baseline state at the shared spawn point, floating above the left floor. */
-export function createPlayerState(
-  config: PlayerPhysicsConfig = DEFAULT_PLAYER_PHYSICS,
-): PlayerPhysicsState {
-  return {
-    x: PLAYER_SPAWN.x,
-    y: PLAYER_SPAWN.y,
-    vx: 0,
-    vy: 0,
-    grounded: false,
-    facing: 1,
-    clinging: false,
-    clingDir: 1,
-    coyoteTime: 0,
-    jumpBufferTime: 0,
-  };
-}
+} from "../collision";
+import { gridPixelSize } from "../tiles";
+import type { SolidGrid } from "../tiles";
+import type { PlayerInput, PlayerPhysicsConfig } from "./config";
+import { DEFAULT_PLAYER_PHYSICS } from "./config";
+import type { PlayerPhysicsState, PlayerStepResult } from "./state";
 
 /**
  * Advances the player by `dt` seconds under `input`. Mutates `state` and
@@ -291,7 +180,7 @@ export function stepPlayer(
 
   // --- Jump: buffer presses, grant coyote time off ledges, grab walls. ---
   // Checked after integration so a press buffered right before touching
-  // ground fires the instant the player lands (a “quick bounce”).
+  // ground fires the instant the player lands (a "quick bounce").
   state.jumpBufferTime = input.jump
     ? config.jumpBufferTime
     : Math.max(0, state.jumpBufferTime - dt);
@@ -329,13 +218,4 @@ export function stepPlayer(
 
   result.grounded = state.grounded;
   return result;
-}
-
-/**
- * The fastest a legitimately-simulated player can travel, px/s. Used by the
- * server's speed check on reported positions; identical on both sides so the
- * ceiling can never undercut a real player.
- */
-export function maxPlayerSpeed(config: PlayerPhysicsConfig = DEFAULT_PLAYER_PHYSICS): number {
-  return Math.max(config.runSpeed, config.maxFallSpeed);
 }

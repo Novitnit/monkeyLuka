@@ -85,7 +85,7 @@ monkeyLuka/
     └── shared/                  # @monkeyluka/shared — raw-TS shared code
         └── src/
             ├── index.ts         # schemas, room names, shared constants
-            └── physics.ts       # barrel → tiles/collision/player/validation
+            └── physics/         # barrel index.ts → tiles / collision/ / player/ / validation
 ```
 
 ## 4. Runtime & packaging decisions
@@ -105,7 +105,7 @@ monkeyLuka/
 ## 5. @monkeyluka/shared — the single source of truth
 
 `packages/shared/src/index.ts` is the shared contract between server and web,
-and `packages/shared/src/physics.ts` is the shared **simulation & validation**
+and `packages/shared/src/physics/index.ts` is the shared **simulation & validation**
 engine both sides run verbatim:
 
 - `ROOM_NAMES.jungle` — the public matchmaker room name clients join with.
@@ -114,9 +114,9 @@ engine both sides run verbatim:
 - `PlayerInfo` / `JungleState` — `@colyseus/schema` **schemas** describing the
   synced room state (`JungleState` = `players: Map<sessionId, PlayerInfo>`);
   `PlayerInfo` carries the authoritative `x/y/vx/vy/grounded/facing`.
-- `physics.ts` — barrel re-exporting the split simulation/validation modules
-  `tiles.ts` (tile constants, grid, world bounds), `collision.ts` (point/AABB
-  tests + penetration helpers), `player.ts` (`stepPlayer()`: run accel, gravity,
+- `physics/` — barrel (`index.ts`) re-exporting the split simulation/validation modules
+  `tiles.ts` (tile constants, grid, world bounds), `collision/` (point/AABB
+  tests + penetration helpers, split into masks/geometry/point/box/support/penetration), `player/` (`stepPlayer()`: run accel, gravity,
   coyote/buffered jump), `validation.ts` (`PLAYER_INPUT_MESSAGE` contract + `validatePositionReport()` + `ANTI_CHEAT` rules). Covered by
   `src/physics.test.ts` (`bun test`). Movement runs **client-side**: the client
   simulates itself every frame with `stepPlayer()` and reports the result; the

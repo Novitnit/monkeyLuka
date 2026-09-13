@@ -28,7 +28,7 @@
  *         edge: a ground-level walker steps straight onto it (there is no
  *         flat lip to land on, and the tile's top edge is open except at
  *         the apex).
- * - 288 – staircase tile (the pixel shape in collision.ts's STAIRS_MASK):
+ * - 288 – staircase tile (the pixel shape in collision/masks.ts's STAIRS_MASK):
  *         eight 2px-wide, 1px-tall treads stepping DOWN from the top-right
  *         (cols 14-15 at row 0) to the bottom-left (cols 0-1 at row 7) —
  *         a 16px run, 8px rise, the mirror of 287, so placed right of a
@@ -44,7 +44,7 @@
  *         lips or side walls) with a fully solid 3px base at the cell's
  *         bottom (rows 13-15), so a player walking over it at rim level
  *         drops into the basin instead of standing on a flat top. The mask
- *         is the collision shape (see DEAD_ZONE_MASK in collision.ts);
+ *         is the collision shape (see DEAD_ZONE_MASK in collision/masks.ts);
  *         touching it returns the player to its checkpoint (the web client
  *         probes its local simulation with isBoxInDeadZone).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
@@ -78,7 +78,7 @@ export const TILE_SLOPE_BR = 262;
  */
 export const TILE_SLOPE_SHALLOW = 287;
 /**
- * Staircase tile: a pixel-mask shape (see STAIRS_MASK in collision.ts) —
+ * Staircase tile: a pixel-mask shape (see STAIRS_MASK in collision/masks.ts) —
  * eight 2px-wide treads stepping down from the top-right to the bottom-left
  * (the mirror-ish of 287, so a 287 followed by a 288 forms a continuous
  * ramp), with a full-height right wall, a left wall from mid-height down,
@@ -88,7 +88,7 @@ export const TILE_SLOPE_SHALLOW = 287;
 export const TILE_STAIRS = 288;
 /**
  * Dead-zone tile: a pixel-mask hazard pit (see DEAD_ZONE_MASK in
- * collision.ts) — an OPEN basin with a 3px solid base at the cell's
+ * collision/masks.ts) — an OPEN basin with a 3px solid base at the cell's
  * bottom and nothing above it (no rim lips or side walls: a player walks
  * off the mouth and sinks to the floor). Touching it returns the player
  * to its checkpoint (the web client probes its local simulation with

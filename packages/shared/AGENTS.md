@@ -55,16 +55,21 @@ place because every tsconfig here uses `"moduleResolution": "bundler"`
   any origin) into the matcher for the Colyseus WebSocket handshake gate and
   the Elysia `/api` CORS. Keep it framework-agnostic (pure string/RegExp).
 
-## Physics & movement validation (`src/physics.ts`)
+## Physics & movement validation (`src/physics/`)
 
-`physics.ts` is a **barrel entry point** — the code is split into four
-framework-agnostic modules in `src/`, re-exported so all existing imports
+`src/physics/` is a **barrel entry point** (`index.ts`) — the code is split
+into focused modules re-exported so all existing imports
 (`@monkeyluka/shared`, `./physics`) keep working: `tiles.ts` (tile constants,
-layer → `SolidGrid`, world bounds), `collision.ts` (point/AABB tests +
-penetration helpers + `wallBeside` wall-adjacency probe), `player.ts`
-(`stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
-state machine (grab/hang/wall-jump/release): config, spawn, speed
-ceiling), `validation.ts` (`player:input` contract + anti-cheat). This is the
+layer → `SolidGrid`, world bounds), `collision/` (point/AABB tests +
+penetration helpers + `wallBeside` wall-adjacency probe, split into
+`masks.ts` (the pixel masks for 288 stairs / 464 dead zone + the shared
+box-overlap / cell-walk / pixel-mask helpers `cellOverlapRect`,
+`forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
+`point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `player/` (the
+`stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
+state machine (grab/hang/wall-jump/release) — split into `config.ts`
+(config, spawn, speed ceiling), `state.ts`, `step.ts`), `validation.ts`
+(`player:input` contract + anti-cheat). This is the
 **single source of truth for gameplay simulation**, imported verbatim by the
 browser (authoritative prediction, since movement is client-simulated) and
 the server (report validation). It is engine-free and pure — no Phaser, DOM,
@@ -78,12 +83,12 @@ or Colyseus imports — so it can also be unit-tested directly.
   bottom-right half), `TILE_SLOPE_SHALLOW` (287, the 2:1 ramp — 16px run, 8px
   rise, solid below the line from the bottom-left corner (0, 16) to the
   right edge's midpoint (16, 8)), `TILE_STAIRS` (288, the staircase tile — a
-  pixel-mask shape in `collision.ts`'s `STAIRS_MASK`, not an analytic wedge:
+  pixel-mask shape in `collision/masks.ts`'s `STAIRS_MASK`, not an analytic wedge:
   eight 2px treads stepping down from the top-right to the bottom-left — the
   mirror of 287 — plus a full-height right wall, a left wall from mid-height
   down, and a solid base row, hollow between the treads and the base),
   `TILE_DEAD_ZONE` (464, the dead-zone pit — a pixel-mask open basin in
-  `collision.ts`'s `DEAD_ZONE_MASK`: rows 13-15 are a solid 3px base, rows
+  `collision/masks.ts`'s `DEAD_ZONE_MASK`: rows 13-15 are a solid 3px base, rows
   0-12 are entirely open; it stays its own kind so the penetration code
   never treats it as a slope), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
@@ -119,7 +124,7 @@ or Colyseus imports — so it can also be unit-tested directly.
   left-mover meets like 262's right column. See
   `discoveries/shallow-ramp-tile-287-half-height-diagonal.md`.
   288 is the staircase tile — a **pixel mask** (`STAIRS_MASK` in
-  collision.ts), so all five queries (point, AABB, slope support,
+  collision/masks.ts), so all five queries (point, AABB, slope support,
   horizontal/vertical penetration) branch on the mask directly: the tread
   tops are the landing surface, sampled at the box's rightmost column
   (`topRow = 7 − ⌊c/2⌋`, same ride-on-the-leading-corner rule as 262/287); a
@@ -132,7 +137,7 @@ or Colyseus imports — so it can also be unit-tested directly.
   the left wall's top row — a 287 + 288 pair is one continuous ramp to the
   top of 288.
   464 is the dead-zone tile — a **pixel mask** (`DEAD_ZONE_MASK` in
-  collision.ts): an OPEN basin. Rows 0-12 are empty (the mouth and
+  collision/masks.ts): an OPEN basin. Rows 0-12 are empty (the mouth and
   interior — nothing at all, no rim lips or side walls), rows 13-15 are a
   fully solid 3px base. A player walks off the mouth like a ledge and
   sinks to the base; adjacent 464 cells merge into one continuous trench

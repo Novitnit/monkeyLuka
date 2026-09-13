@@ -47,7 +47,7 @@ monkeyLuka/
     └── shared/           # @monkeyluka/shared — framework-agnostic shared code → packages/shared/AGENTS.md
         └── src/
             ├── index.ts      # schemas (JungleState/PlayerInfo), room names, origin allowlist
-            └── physics.ts    # barrel → tiles.ts / collision.ts / player.ts / validation.ts
+            └── physics/      # barrel index.ts → tiles.ts / collision/ / player/ / validation.ts
 ```
 
 ## Requirements & versions
@@ -163,7 +163,7 @@ see `discoveries/agents.md` for the format and conventions.
 ## Gameplay simulation & anti-cheat (current state)
 
 The player simulation is **client-side**: the client runs the collision and
-run/jump physics every frame with `packages/shared/src/physics.ts` (tile
+run/jump physics every frame with `packages/shared/src/physics/` (tile
 collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes,
 464 dead-zone pits) and renders its own prediction
 with no server round-trip. Slope contacts: 110/109 landings rest on the flat
@@ -179,7 +179,7 @@ full-height right wall, a left wall from mid-height down, and a solid base
 row, hollow between the treads and the base (a pixel mask, not an analytic
 wedge), so a 287 + 288 pair forms one continuous ramp to the top of 288 —
 its seam binds the walker at 287's apex (dy 8) onto 288's left tread (dy 7)
-through a 1px-deep support allowance; see collision.ts's `STAIRS_MASK`) —
+through a 1px-deep support allowance; see collision/masks.ts's `STAIRS_MASK`) —
 documented in
 `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` and
 `discoveries/shallow-ramp-tile-287-half-height-diagonal.md`. 464 is the
