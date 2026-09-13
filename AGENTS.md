@@ -315,8 +315,11 @@ from accepted client reports only (velocity clamped to the physics max) — a
 raw client-supplied position is never trusted, and after a stop the player
 only moves again once a report passes validation. Wall cling (a grab):
 airborne next to a wall, moving into it, pressing jump grabs the wall and
-hangs the player (no gravity) until jump again launches them up+away
-(wall jump), they press away, or they land — the shared stepPlayer state
+hangs the player (no gravity, no lateral drift) until jump again launches
+them up+away (wall jump), the wall face ends below them, or they land —
+steering away from the wall does NOT release the cling; the only way to
+detach while the wall remains beside them is to jump — the shared
+stepPlayer state
 machine + `clinging` in the wire reports/broadcast drive it deterministically
 on both sides. Details live in the `shared`, `server`, and `web` workspace
 guides. **Debug** (`NEXT_PUBLIC_DEBUG`,
@@ -327,6 +330,25 @@ server-chosen spawn, so it can't bypass the anti-cheat) — only the R key
 itself is debug-gated, on the web side. `NEXT_PUBLIC_DOOR_DEBUG`
 ("1"/"true") is a separate web-only gate for the cyan door-link lines
 (see the door-links bullet above).
+
+**Touch controls (mobile)**: on a coarse-pointer device (the same
+`(pointer: coarse)` check the GameGate uses), the playing screen overlays
+on-screen controls on the canvas: a bottom-left left/right move pad and a
+bottom-right action cluster (interact + jump), anchored with safe-area
+insets (`apps/web/src/components/touch-controls.tsx`). The HUD writes into
+a shared `TouchControlsState` (`apps/web/src/game/touch/touch-input.ts`,
+one instance per game) and the scene's update loop merges it into the
+keyboard input every frame (`scene/update.ts`): left/right are held states,
+jump/interact are tap edges consumed exactly like `Keyboard.JustDown`
+(one tap = one jump/interact, buffered under the quest modal/death freeze
+like a key press, mid-air taps consumed on landing) — there is no separate
+touch code path in the player physics, so the run/jump/wall-cling
+simulation and the anti-cheat reports behave identically to keyboard. The
+interact button drives the same `PLAYER_INTERACTION_MESSAGE` flow as the E
+key (grounded gate included). The buttons are `pointer-events-auto` inside
+a `pointer-events-none` overlay, so taps anywhere else still reach the
+Phaser canvas (quest-box rows, etc.); Phaser needs no extra pointers
+because the HUD is DOM, not game objects.
 
 **Quest questions (showquest)**: pressing E on the 315 signpost (see the
 interaction bullet above) no longer logs — the server sends that player a

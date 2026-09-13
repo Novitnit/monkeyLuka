@@ -28,8 +28,10 @@ import type { PlayerPhysicsState, PlayerStepResult } from "./state";
  * while next to a wall and moving into it grabs the wall — the player hangs
  * mid-air (gravity/lateral drift off, facing away from the wall) until they
  * press jump
- * again (wall jump: launches up and away), press away from the wall, walk
- * the wall face below them, or land. See `wallBeside` in collision.ts.
+ * again (wall jump: launches up and away), walk the wall face below them,
+ * or land. Steering away from the wall does NOT release the cling — the
+ * only way to detach while the wall is still beside them is to jump. See
+ * `wallBeside` in collision.ts.
  */
 export function stepPlayer(
   state: PlayerPhysicsState,
@@ -59,13 +61,10 @@ export function stepPlayer(
       state.jumpBufferTime = 0;
       state.coyoteTime = 0;
     } else {
-      // Let go when the player steers away from the wall, the wall face
-      // ends below them, or (handled in the vertical pass) they land.
-      const away = state.clingDir > 0 ? input.left : input.right;
-      if (
-        away ||
-        !wallBeside(grid, state.x, state.y, hw, hh, state.clingDir)
-      ) {
+      // Let go only when the wall face ends below them or (handled in the
+      // vertical pass) they land. Steering away from the wall does not
+      // release the cling — the player detaches by jumping.
+      if (!wallBeside(grid, state.x, state.y, hw, hh, state.clingDir)) {
         state.clinging = false;
       } else {
         // Hanging: no gravity, no lateral drift, glued to the cling wall.

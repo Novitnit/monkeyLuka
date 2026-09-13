@@ -53,6 +53,34 @@ export function IconChevronRight(props: IconProps) {
   );
 }
 
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <svg {...strokeSvg(props)}>
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+/** Filled triangle pointing up — the touch jump button's glyph. */
+export function IconArrowUp(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M12 4.5 20.5 20h-17Z" />
+    </svg>
+  );
+}
+
+/** Question-mark circle — the touch interact button's glyph. */
+export function IconQuestionCircle(props: IconProps) {
+  return (
+    <svg {...strokeSvg(props)}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
 export function IconFullscreen(props: IconProps) {
   return (
     <svg {...strokeSvg(props)}>

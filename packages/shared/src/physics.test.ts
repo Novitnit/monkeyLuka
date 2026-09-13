@@ -1384,13 +1384,27 @@ describe("wall cling", () => {
     expect(rose).toBe(true);
   });
 
-  test("pressing away from the wall releases the cling and the player falls", () => {
+  test("pressing away from the wall keeps the cling — only a jump detaches", () => {
     const { grid, state } = grabTheWall();
+    const yBefore = state.y;
+    // Steering away does NOT release the cling: the player is glued to the
+    // wall, no gravity, no lateral drift.
+    for (let i = 0; i < 60; i++) {
+      stepPlayer(state, { left: true, right: false, jump: false }, grid, STEP, config);
+      expect(state.clinging).toBe(true);
+      expect(state.y).toBe(yBefore);
+      expect(state.vy).toBe(0);
+      expect(state.vx).toBe(0);
+    }
+    // Only the jump detaches.
+    stepPlayer(state, { left: true, right: false, jump: true }, grid, STEP, config);
     stepPlayer(state, { left: true, right: false, jump: false }, grid, STEP, config);
     expect(state.clinging).toBe(false);
     const y = state.y;
-    for (let i = 0; i < 30; i++) {
-      stepPlayer(state, noInput, grid, STEP, config);
+    // The wall jump boosted the player ~30px up; wait out the airtime (~0.7s)
+    // to confirm they now fall instead of hanging.
+    for (let i = 0; i < 80; i++) {
+      stepPlayer(state, { left: true, right: false, jump: false }, grid, STEP, config);
     }
     expect(state.y).toBeGreaterThan(y);
   });

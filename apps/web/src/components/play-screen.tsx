@@ -14,9 +14,14 @@ import {
   saveJungleSession,
 } from "@/lib/jungle-session";
 import { createJungleGame, type JungleRoom } from "@/game/jungle-game";
+import {
+  createTouchControlsState,
+  type TouchControlsState,
+} from "@/game/touch/touch-input";
 import { SiteHeader } from "@/components/site-header";
 import { NameDialog } from "@/components/name-dialog";
 import { PlayMenu } from "@/components/play-menu";
+import { TouchControls } from "@/components/touch-controls";
 
 type Phase = "idle" | "naming" | "joining" | "resuming" | "playing";
 
@@ -56,6 +61,10 @@ export function PlayScreen() {
     Awaited<ReturnType<typeof createJungleGame>> | null
   >(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
+  // Shared on-screen control state for touch devices: the TouchControls HUD
+  // writes here, and the same instance is handed to the Phaser scene (via
+  // createJungleGame options) for its update loop to read every frame.
+  const touchControlsRef = useRef<TouchControlsState>(createTouchControlsState());
   // StrictMode double-invokes effects in dev; run the resume once per mount.
   const resumeStartedRef = useRef(false);
   // Liveness flag for the in-flight resume below: re-armed by every effect
@@ -78,7 +87,9 @@ export function PlayScreen() {
   useEffect(() => {
     if (phase !== "playing" || !mountRef.current || !roomRef.current) return;
     let disposed = false;
-    void createJungleGame(mountRef.current, roomRef.current).then((game) => {
+    void createJungleGame(mountRef.current, roomRef.current, {
+      touchControls: touchControlsRef.current,
+    }).then((game) => {
       if (disposed) {
         game.destroy(true);
         return;
@@ -254,6 +265,20 @@ export function PlayScreen() {
     return (
       <div className="relative h-dvh w-full overflow-hidden bg-zinc-950">
         <div ref={mountRef} className="h-full w-full" />
+        {/* On-screen controls for touch devices (see touch-controls.tsx):
+            presses land in the same shared state the game's update loop
+            reads. */}
+        <TouchControls
+          onMove={(key, down) => {
+            touchControlsRef.current[key] = down;
+          }}
+          onJump={() => {
+            touchControlsRef.current.jump = true;
+          }}
+          onInteract={() => {
+            touchControlsRef.current.interact = true;
+          }}
+        />
         <button
           type="button"
           onClick={exitToMenu}

@@ -2,6 +2,7 @@ import type Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import type { JungleRoomState } from "@monkeyluka/shared";
 import { buildJungleScene } from "./scene";
+import type { TouchControlsState } from "./touch/touch-input";
 
 /** A joined jungle room, typed with its synced state. */
 export type JungleRoom = Room<unknown, JungleRoomState>;
@@ -22,6 +23,14 @@ export interface JungleGameOptions {
    * `__jungleDoorDebug.setEnabled(...)`.
    */
   doorDebug?: boolean;
+  /**
+   * Live on-screen control state for touch devices (see
+   * `components/touch-controls.tsx` — the HUD writes here, the scene's
+   * update loop merges it into the player input like the keyboard axes).
+   * Pass the same instance you hand to the HUD. When omitted the game
+   * accepts keyboard input only.
+   */
+  touchControls?: TouchControlsState;
 }
 
 /**

@@ -50,6 +50,21 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   pull-to-refresh from fighting the fixed-height screen. The placeholder
   screens (`/how-to-play`, `/leaderboard`) follow the same fixed-height +
   clamp-padding pattern.
+- **On-screen touch controls**: when the primary pointer is coarse (mobile
+  — the same `(pointer: coarse)` check as the GameGate), the playing state
+  renders `src/components/touch-controls.tsx` over the canvas: a bottom-left
+  left/right pad and a bottom-right interact+jump cluster, safe-area
+  anchored and `pointer-events-none` around the buttons so taps elsewhere
+  (quest rows, etc.) reach Phaser. The HUD writes into a shared
+  `TouchControlsState` (`src/game/touch/touch-input.ts`, one instance per
+  game, created by `play-screen.tsx` and handed to the game via
+  `JungleGameOptions.touchControls`), and `scene/update.ts` merges it into
+  the same player-input path as the keyboard: left/right held, jump/interact
+  tap edges consumed exactly like `Keyboard.JustDown` (one tap = one
+  press; a tap under the quest modal/death freeze stays buffered until the
+  gates drop, and a mid-air interact tap is consumed once the feet land).
+  No separate physics/touch code path — reports and validation are
+  identical to keyboard play.
 - The jungle client is split for focus: `src/game/jungle-game.ts` is the thin
   boot (dynamic `await import("phaser")` + game config) and the scene lives
   in `src/game/scene/` — `scene/index.ts` builds the scene config by wiring

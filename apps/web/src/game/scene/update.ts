@@ -85,12 +85,18 @@ export function createSceneUpdate(
     // death.ts): the body is frozen where it fell until its death question
     // is answered correctly — no gravity-walk, no jump, no wall grab. ---
     const frozen = state.questOpen || state.dead;
+    // On-screen touch controls merge with the keyboard axes: left/right are
+    // held states, jump is a tap edge consumed below. The edge mirrors
+    // `Keyboard.JustDown` exactly — while frozen it stays buffered (like a
+    // key pressed under the quest modal) and fires once the player is
+    // unfrozen, so a tap is never dropped by a gate.
+    const touch = state.touchControls;
     const left = frozen
       ? false
-      : Boolean(state.cursors?.left.isDown || state.keyA?.isDown);
+      : Boolean(state.cursors?.left.isDown || state.keyA?.isDown || touch?.left);
     const right = frozen
       ? false
-      : Boolean(state.cursors?.right.isDown || state.keyD?.isDown);
+      : Boolean(state.cursors?.right.isDown || state.keyD?.isDown || touch?.right);
     const jumpPressed = frozen
       ? false
       : Boolean(
@@ -98,36 +104,44 @@ export function createSceneUpdate(
             phaser.Input.Keyboard.JustDown(state.cursors.up)) ||
             (state.cursors &&
               phaser.Input.Keyboard.JustDown(state.cursors.space)) ||
-            (state.keyW && phaser.Input.Keyboard.JustDown(state.keyW)),
+            (state.keyW && phaser.Input.Keyboard.JustDown(state.keyW)) ||
+            touch?.jump,
         );
+    // Consume the touch jump edge on every unfrozen frame (one tap = one
+    // jump); when frozen the tap stays buffered like the keyboard's.
+    if (!frozen && touch) touch.jump = false;
 
     // --- Interaction tiles: standing on one and pressing E triggers its
     // action on the server. The client probes its OWN predicted feet cell
     // (the freshest spot, like the dead-zone probe below); the sent gid is
     // advisory — the room re-probes its last accepted position with the
     // same shared rule before running the action, so a stale or forged
-    // press is a no-op. Edge-triggered (JustDown), and only while grounded
-    // (standing on the tile, not jumping through it). Skipped while the
-    // quest box is open — the room also drops repeat showquests while one
-    // is pending, so a stray E can't swap the question mid-answer. ---
-    if (
-      !state.questOpen &&
-      !state.dead &&
-      state.keyE &&
-      player.physics.grounded &&
-      phaser.Input.Keyboard.JustDown(state.keyE)
-    ) {
-      const gid =
-        state.interactions === null
-          ? 0
-          : interactionTileUnderFeet(
-              state.interactions,
-              player.physics.x,
-              player.physics.y,
-              DEFAULT_PLAYER_PHYSICS.height,
-            );
-      if (gid !== 0) {
-        room.send(PLAYER_INTERACTION_MESSAGE, { gid });
+    // press is a no-op. Edge-triggered (JustDown, or a tap on the on-screen
+    // interact button), and only while grounded (standing on the tile, not
+    // jumping through it). Skipped while the quest box is open — the room
+    // also drops repeat showquests while one is pending, so a stray tap
+    // can't swap the question mid-answer. ---
+    if (!state.questOpen && !state.dead && player.physics.grounded) {
+      const interactPressed =
+        (state.keyE && phaser.Input.Keyboard.JustDown(state.keyE)) ||
+        Boolean(touch?.interact);
+      // Consume the touch interact edge inside the same grounded/ungated
+      // branch where JustDown is read, so a tap made mid-air stays buffered
+      // until the feet land — matching the keyboard's edge behavior.
+      if (touch) touch.interact = false;
+      if (interactPressed) {
+        const gid =
+          state.interactions === null
+            ? 0
+            : interactionTileUnderFeet(
+                state.interactions,
+                player.physics.x,
+                player.physics.y,
+                DEFAULT_PLAYER_PHYSICS.height,
+              );
+        if (gid !== 0) {
+          room.send(PLAYER_INTERACTION_MESSAGE, { gid });
+        }
       }
     }
 

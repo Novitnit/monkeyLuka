@@ -229,6 +229,12 @@ export function createSceneCreate(
             ? keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.R) ?? null
             : null;
 
+          // On-screen touch controls (touch-controls.tsx): the React HUD
+          // writes into this shared object and the update loop merges it
+          // into the keyboard input each frame. Null on keyboard/mouse
+          // devices.
+          state.touchControls = options.touchControls ?? null;
+
           // The quest question box (showquest interaction): screen-fixed
           // modal that listens for `quest:question` on the room and returns
           // the player's answer via `quest:answer`. Independent of the map,

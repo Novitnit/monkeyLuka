@@ -14,6 +14,7 @@ import type {
 import type { CollisionDebug } from "../collision/collision-debug";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
+import type { TouchControlsState } from "../touch/touch-input";
 
 /** Scene-scoped state shared between create() and update(). */
 export interface JungleSceneState {
@@ -64,6 +65,12 @@ export interface JungleSceneState {
   keyW: Phaser.Input.Keyboard.Key | null;
   /** E: trigger the interaction tile under the feet (see update.ts). */
   keyE: Phaser.Input.Keyboard.Key | null;
+  /**
+   * On-screen control state for touch devices (see touch-controls.tsx): the
+   * React HUD writes into this object and the update loop merges it into
+   * the keyboard input each frame. Null on keyboard/mouse devices.
+   */
+  touchControls: TouchControlsState | null;
   /**
    * True while the quest question box is on screen. While open the player's
    * movement input and the interaction key are ignored (modal) — see
@@ -124,6 +131,7 @@ export function createJungleSceneState(): JungleSceneState {
     keyD: null,
     keyW: null,
     keyE: null,
+    touchControls: null,
     questOpen: false,
     dead: false,
     deathRequestAt: 0,

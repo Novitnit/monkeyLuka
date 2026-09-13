@@ -204,7 +204,9 @@ or Colyseus imports — so it can also be unit-tested directly.
   cling: airborne + moving into a wall + jump press grabs the wall — the
   player hangs (gravity/lateral drift off, facing away from the wall, the
   mirror of the cling side on the X-axis) until jump again
-  (wall jump: up + away), pressing away, or landing — then axis-separated
+  (wall jump: up + away), the wall face ends below them, or landing —
+  steering away from the wall does NOT release the cling (detach = jump
+  only) — then axis-separated
   AABB-vs-tiles collision with slope surfaces). Runs on the **client** every
   frame; the reported result is what the server validates.
 - `PLAYER_INPUT_MESSAGE` / `PlayerInputMessage` — the client→server wire

@@ -14,6 +14,10 @@ server together, or `bun run dev:web` for this app only) → http://localhost:30
   whole app in the root layout, it blocks rendering until coarse-pointer
   devices are in landscape AND full-screen (or PWA standalone). Desktop
   users pass straight through.
+- On-screen touch controls during play (`src/components/touch-controls.tsx`):
+  a bottom-left move pad + bottom-right jump/interact buttons render over
+  the Phaser canvas on coarse-pointer devices and drive the same player
+  input as the keyboard (`src/game/touch/touch-input.ts`).
 
 ## Layout conventions
 
