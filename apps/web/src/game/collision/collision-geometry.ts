@@ -12,6 +12,8 @@
  * adjacent:
  * - 57  – solid wall tile; block boundaries are traced as straight edges
  *         (horizontal edges are "floor", vertical edges are "wall").
+ * - 65  – plain full block (brick texture) with the same solid footprint
+ *         as 57; traced the same way and merged with 57 neighbors.
  * - 110 – diagonal tile, solid on its top-left half (line TL → BR).
  * - 109 – diagonal tile, solid on its top-right half (line TR → BL).
  * - 262 – diagonal tile, solid on its bottom-right half (line TR → BL).
@@ -43,12 +45,19 @@ import {
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
+  TILE_SOLID_65,
   TILE_STAIRS,
 } from "@monkeyluka/shared";
 import type { TiledMap } from "../map/tiled-map";
 
 /** Solid wall tile: merges with neighbors into collision blocks. */
 export const WALL_TILE = TILE_SOLID;
+/**
+ * Plain full block tile (gid 65, brick texture): the same solid footprint
+ * as WALL_TILE/57, so it merges with 57 neighbors and traces edges the
+ * same way.
+ */
+export const WALL_TILE_65 = TILE_SOLID_65;
 /** Diagonal tile, solid on its top-left half (line top-left → bottom-right). */
 export const DIAGONAL_TL_TO_BR = TILE_SLOPE_TL_BR;
 /** Diagonal tile, solid on its top-right half (line top-right → bottom-left). */
@@ -138,6 +147,7 @@ export function buildCollisionGeometry(
     const gid = gids[ty * width + tx];
     return (
       gid === WALL_TILE ||
+      gid === WALL_TILE_65 ||
       gid === DIAGONAL_TL_TO_BR ||
       gid === DIAGONAL_TR_TO_BL ||
       gid === DIAGONAL_TR_TO_BL_BOTTOM ||
@@ -173,7 +183,7 @@ export function buildCollisionGeometry(
       const left = tx * tw;
       const top = ty * th;
 
-      if (gid === WALL_TILE) {
+      if (gid === WALL_TILE || gid === WALL_TILE_65) {
         // A side faces open space — that side is a boundary edge of the
         // block (horizontal = floor/blue, vertical = wall/green). Sides
         // touching another block tile (57 or a 109/110 slope) emit nothing.

@@ -51,12 +51,12 @@ export interface PlayerPhysicsConfig {
 }
 
 /** Where the player spawns (map pixels, AABB center). */
-export const PLAYER_SPAWN = { x: 96, y: 176 } as const;
+export const PLAYER_SPAWN = { x: (3*16)+8, y: (12*16) } as const;
 
 /**
  * Tuning for the jungle monkey. Chosen so the platforms are reachable: the
- * right platform's top is 16px above the left one and the gap between them
- * is 32px — a full jump rises ~34px and covers ~90px horizontally.
+ * runway above the left floor (via the 287/288 ramps) sits 16px higher — a
+ * full jump rises ~34px and covers ~90px horizontally.
  */
 export const DEFAULT_PLAYER_PHYSICS: PlayerPhysicsConfig = {
   width: 13,
@@ -110,7 +110,7 @@ export interface PlayerStepResult {
   hitCeiling: boolean;
 }
 
-/** Baseline state at the shared spawn point, resting on the left platform. */
+/** Baseline state at the shared spawn point, floating above the left floor. */
 export function createPlayerState(
   config: PlayerPhysicsConfig = DEFAULT_PLAYER_PHYSICS,
 ): PlayerPhysicsState {

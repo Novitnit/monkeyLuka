@@ -29,10 +29,12 @@ describe("jungle-map loader", () => {
     expect(width).toBe(60 * 16);
     expect(height).toBe(17 * 16);
 
-    // Snapshot of the real map's layer1 (computed from main.json): 109
-    // solid tiles and 11 sloped kinds (5×110, 2×109, 2×287, 2×288 — the
-    // two 287+288 ramp pairs; the current map has no 262); the decoration
-    // gid (464) must NOT become collision.
+    // Snapshot of the real map's layer1 (computed from main.json): 146
+    // solid tiles (of which 3 are gid 65, folded into TILE_SOLID by
+    // buildTileGrid) and 10 sloped kinds (4×110, 2×109, 2×287, 2×288 —
+    // the two 287+288 ramp pairs; the current map has no 262); the
+    // decoration gids (315, 375/376, 401/402, 464) must NOT become
+    // collision.
     let solid = 0;
     let slopes = 0;
     for (const kind of grid.kinds) {
@@ -47,13 +49,13 @@ describe("jungle-map loader", () => {
         slopes += 1;
       }
     }
-    expect(solid).toBe(109);
-    expect(slopes).toBe(11);
+    expect(solid).toBe(146);
+    expect(slopes).toBe(10);
   });
 
   test("spawn point floats above the left platform and has open air below", () => {
     const { grid } = parseJungleMap(raw);
-    // The spawn center (96,176) is above the left platform top (row 13, y=208).
+    // The spawn center (56,192) floats above the row-13 floor (top y=208).
     expect(isPointSolid(grid, PLAYER_SPAWN.x, PLAYER_SPAWN.y)).toBe(false);
     // Directly below the spawn, the platform begins at y=208.
     expect(isPointSolid(grid, PLAYER_SPAWN.x, 208)).toBe(true);

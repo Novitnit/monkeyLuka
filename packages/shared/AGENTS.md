@@ -70,7 +70,10 @@ browser (authoritative prediction, since movement is client-simulated) and
 the server (report validation). It is engine-free and pure — no Phaser, DOM,
 or Colyseus imports — so it can also be unit-tested directly.
 
-- Tile constants: `TILE_SIZE` (16), `TILE_SOLID` (57), `TILE_SLOPE_TL_BR` (110),
+- Tile constants: `TILE_SIZE` (16), `TILE_SOLID` (57), `TILE_SOLID_65` (65,
+  a plain full block with the same footprint as 57 — `buildTileGrid` folds
+  it into `TILE_SOLID` so the physics sees one solid kind, since the
+  penetration code treats every non-57 kind as a slope), `TILE_SLOPE_TL_BR` (110),
   `TILE_SLOPE_TR_BL` (109), `TILE_SLOPE_BR` (262, mirror of 109 — solid on the
   bottom-right half), `TILE_SLOPE_SHALLOW` (287, the 2:1 ramp — 16px run, 8px
   rise, solid below the line from the bottom-left corner (0, 16) to the

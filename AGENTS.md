@@ -164,7 +164,7 @@ see `discoveries/agents.md` for the format and conventions.
 
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics.ts` (tile
-collision: 57 solid, 110/109/262/287/288 slopes) and renders its own prediction
+collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes) and renders its own prediction
 with no server round-trip. Slope contacts: 110/109 landings rest on the flat
 top lip
 (never hoist an under-runner walking below a chamfer); 262 climbing rides the

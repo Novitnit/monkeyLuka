@@ -18,3 +18,6 @@ build/
 # Logs & OS
 *.log
 .DS_Store
+
+# Tiled editor (Assets/map: keep the .tiled-project config, skip session UI state)
+*.tiled-session

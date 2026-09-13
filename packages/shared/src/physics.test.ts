@@ -67,7 +67,10 @@ function settle(grid: SolidGrid, x: number, y: number) {
 describe("tile grid", () => {
   test("builds kinds from gids and ignores non-solid tiles", () => {
     const grid = buildTileGrid(
-      layer(6, 1, [0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR, TILE_STAIRS]),
+      layer(8, 1, [
+        0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR,
+        TILE_STAIRS, 65, 315,
+      ]),
     );
     expect(grid.kinds[0]).toBe(0);
     expect(grid.kinds[1]).toBe(TILE_SOLID);
@@ -75,6 +78,12 @@ describe("tile grid", () => {
     expect(grid.kinds[3]).toBe(TILE_SLOPE_TR_BL);
     expect(grid.kinds[4]).toBe(TILE_SLOPE_BR);
     expect(grid.kinds[5]).toBe(TILE_STAIRS);
+    // 65 is a plain full block in the tileset — it folds into TILE_SOLID
+    // (the penetration code treats every non-57 kind as a slope, so the
+    // grid must not carry a second solid kind).
+    expect(grid.kinds[6]).toBe(TILE_SOLID);
+    // 315 also appears in layer1 but is not a collision tile — ignored.
+    expect(grid.kinds[7]).toBe(0);
   });
 
   test("point solidity respects the exact slope halves", () => {
@@ -778,30 +787,40 @@ describe("the real jungle map", () => {
     expect(state.y).toBeCloseTo(13 * TILE_SIZE - config.height / 2, 4);
   });
 
-  test("a jump spans the 32px gap between platforms", () => {
+  test("a jump from the floor clears the 16px rise onto the ramp", () => {
+    // The redesigned map has no same-height platform gap: the left floor
+    // (row 13, feet 208) is one tile below the 287/288 ramp runway (row 12,
+    // feet 192). From the spawn landing spot a jump with a short run-up
+    // must rise onto the ramp — never fall into the pit to its right.
     const grid = jungleGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
       stepPlayer(state, noInput, grid, STEP, config);
     }
-    let crossed = false;
-    for (let i = 0; i < 240; i++) {
-      const res = stepPlayer(
+    expect(state.grounded).toBe(true); // floor top at 208
+    let onRamp = false;
+    for (let i = 0; i < 300; i++) {
+      stepPlayer(
         state,
-        { left: false, right: true, jump: i === 0 },
+        { left: false, right: true, jump: i === 12 },
         grid,
         STEP,
         config,
       );
-      if (state.grounded && state.x > 13 * TILE_SIZE) crossed = true;
-      if (crossed) break;
+      if (state.grounded && state.x > 6 * TILE_SIZE) {
+        onRamp = true;
+        break;
+      }
     }
-    expect(crossed).toBe(true);
+    expect(onRamp).toBe(true);
+    // It landed on the ramp/runway surface, well above the row-13 floor.
+    expect(state.y + config.height / 2).toBeLessThan(13 * TILE_SIZE);
   });
 
   test("running off the left platform without a jump drops into the gap", () => {
-    // The right platform sits 16px HIGHER than the left one; a ground run
-    // falls short of the ledge and the player ends up sliding into the pit.
+    // A ground run from the spawn crosses the ramp runway and drops off its
+    // end into the pit — the sim must never end up floating or outside the
+    // world (a pure bounds check; the exact landing spot is not asserted).
     const grid = jungleGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
@@ -833,39 +852,40 @@ describe("the real jungle map", () => {
     expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
   });
 
-  test("walking off the left platform edge drops into the pit", () => {
+  test("walking left off the floor's edge drops into the pit", () => {
+    // The redesigned map's left floor (row 13) runs from x=16 to x=144; the
+    // spawn lands mid-floor, so the old “over the void” start no longer
+    // exists. Walking left past x=16 must fall over the edge and stop at
+    // the world floor.
     const grid = jungleGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
       stepPlayer(state, noInput, grid, STEP, config);
     }
-    state.x = 2.2 * TILE_SIZE; // left of the platform, over the void
-    state.grounded = false;
-    for (let i = 0; i < 600; i++) {
-      stepPlayer(state, noInput, grid, STEP, config);
-      if (state.grounded) break;
+    let fell = false;
+    for (let i = 0; i < 900; i++) {
+      stepPlayer(state, { left: true, right: false, jump: false }, grid, STEP, config);
+      if (!state.grounded) fell = true;
+      if (fell && state.grounded) break;
     }
+    expect(fell).toBe(true);
     expect(state.grounded).toBe(true);
     expect(state.y).toBeCloseTo(gridPixelSize(grid).height - config.height / 2, 3);
   });
 
-  test("walks up the 262 ramp onto the block without tripping the anti-cheat", () => {
-    // Regression for the slope kick: walking right along platform B's top
-    // (y=192) rises up the 262 ramp at (19,11) (x=304 → y=176 at x=320) and
-    // steps onto the solid block top. The old vertical sampling lifted the
-    // box only to the slope's deepest point, burying its right side ~13px
-    // under the ramp; the box jammed against the block and every report
-    // read as buried-in-geometry (teleport), kicking at 12 violations.
+  test("walks the full left section from spawn without tripping the anti-cheat", () => {
+    // Regression for the slope kick, re-anchored to the redesigned map:
+    // from the actual spawn the walker falls to the row-13 floor, climbs
+    // the 287 ramp, the 288 staircase, and the row-12 runway (feet 192)
+    // with every movement report passing validation. The old 262 bug (the
+    // vertical sampler burying the box under the ramp, reading every report
+    // as buried-in-geometry) is exercised here by the same rising motion.
     const grid = jungleGrid();
     const state = createPlayerState(config);
-    state.x = 14 * TILE_SIZE + 4; // 228 — on platform B's top
-    state.y = 12 * TILE_SIZE - config.height / 2; // 185 — feet at 192
-    state.grounded = true;
-    state.vy = 0;
     const violations: string[] = [];
     let lastValid = { x: state.x, y: state.y };
-    let nextReport = 0;
-    for (let i = 0; i < 600; i++) {
+    let nextReport = 3;
+    for (let i = 0; i < 900; i++) {
       stepPlayer(
         state,
         { left: false, right: true, jump: false },
@@ -886,11 +906,14 @@ describe("the real jungle map", () => {
         lastValid = { x: state.x, y: state.y };
         nextReport = i + 3;
       }
-      if (state.x > 20.5 * TILE_SIZE) break; // one tile past the ramp
+      // Up on the runway at col 8 (x > 128) — past the ramp pair.
+      if (state.grounded && state.x > 8 * TILE_SIZE + 8) break;
     }
-    expect(state.x).toBeGreaterThan(20.5 * TILE_SIZE);
-    expect(state.grounded).toBe(true);
     expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It climbed from the floor (feet 208) onto the runway top (feet 192).
+    expect(state.y + config.height / 2).toBeCloseTo(12 * TILE_SIZE, 2);
+    expect(state.x).toBeGreaterThan(8 * TILE_SIZE);
   });
 
   test("walks up the jungle 287 ramp from the floor without tripping the anti-cheat", () => {

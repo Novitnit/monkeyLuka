@@ -7,6 +7,9 @@
  *
  * Solid tiles (gids in the Tiled map's collision layer):
  * - 57  – fully solid block.
+ * - 65  – plain full block (brick texture, same solid footprint as 57);
+ *         `buildTileGrid` folds it into TILE_SOLID so the physics sees one
+ *         solid kind.
  * - 110 – diagonal tile, solid on its top-left half (line TL → BR). A point
  *         inside the tile with local coords (dx, dy) is solid when dy ≤ dx.
  * - 109 – diagonal tile, solid on its top-right half (line TR → BL); a point
@@ -44,6 +47,14 @@
 export const TILE_SIZE = 16;
 /** Fully solid block tile. */
 export const TILE_SOLID = 57;
+/**
+ * Plain full block tile (brick texture — identical solid footprint to 57,
+ * which is why `buildTileGrid` folds gid 65 into TILE_SOLID instead of
+ * keeping a second solid kind: the penetration code dispatches on kind and
+ * treats every non-57 kind as a slope, so a distinct 65 kind would silently
+ * become a 262-shaped wedge in the fallthrough branches).
+ */
+export const TILE_SOLID_65 = 65;
 /** Diagonal tile, solid on its top-left half (line TL → BR). */
 export const TILE_SLOPE_TL_BR = 110;
 /** Diagonal tile, solid on its top-right half (line TR → BL). */
@@ -106,12 +117,15 @@ export function buildTileGrid(layer: CollisionLayerData): SolidGrid {
     const gid = layer.gids[i] ?? 0;
     kinds[i] =
       gid === TILE_SOLID ||
+      gid === TILE_SOLID_65 || // same shape as 57 — folded to TILE_SOLID below
       gid === TILE_SLOPE_TL_BR ||
       gid === TILE_SLOPE_TR_BL ||
       gid === TILE_SLOPE_BR ||
       gid === TILE_SLOPE_SHALLOW ||
       gid === TILE_STAIRS
-        ? gid
+        ? gid === TILE_SOLID_65
+          ? TILE_SOLID
+          : gid
         : 0;
   }
   return { width: layer.width, height: layer.height, kinds };

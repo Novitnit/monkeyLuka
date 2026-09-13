@@ -43,7 +43,7 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   toward the server position, animated from the `idle`/`cling`/`jog`/`jump`
   sprite sheets in `Assets/player/sheets`, served via the `public/player`
   symlink;
-  spawn **96,176** inside the first room). Local and remote sprites are
+  spawn **56,192** inside the first room). Local and remote sprites are
   children of a scene-level **player layer** — a transform twin of room 0
   (same position/scale) created after all the room containers — so they
   draw on top of every room's background/tiles while keeping room-local
@@ -93,7 +93,7 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
   like `tiled-map.ts`)
-  extracts collision geometry from the `layer1` tiles — 57/109/110/262/287/288
+  extracts collision geometry from the `layer1` tiles — 57/65/109/110/262/287/288
   tiles form one solid block wherever adjacent (a 57 side bordering a slope
   emits no straight edge; the slope line takes over that boundary). Blocks
   are traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
