@@ -7,19 +7,18 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+  ROOM_OBJECT_GROUP_NAME,
+  TILE_DOOR_BOTTOM_LEFT,
+  TILE_DOOR_BOTTOM_RIGHT,
+  TILE_DOOR_TOP_LEFT,
+  TILE_DOOR_TOP_RIGHT,
+  TILE_INTERACTION,
   groupRoomObjectsByName,
   type DoorEntity,
   type DoorLinkGroup,
 } from "@monkeyluka/shared";
 import { parseJungleMap } from "../../game/jungle-map";
 import { QuestGate } from "./quest-gate";
-
-/** Frozen snapshot of the real map file (Assets/map/main.json). */
-const realMap = parseJungleMap(
-  (await Bun.file(
-    new URL("../../../../../Assets/map/main.json", import.meta.url),
-  ).json()) as Parameters<typeof parseJungleMap>[0],
-);
 
 function door(tx: number, ty: number): DoorEntity {
   return { tx, ty, cols: 2, rows: 2, state: "closed" };
@@ -102,16 +101,40 @@ describe("quest gate", () => {
     expect(orphaned.state).toBe("closed");
   });
 
-  test("the real map: answering room1's sole signpost opens its sole door", () => {
-    // Frozen snapshot of the real map (Assets/map/main.json): room1 links
-    // the signpost at (17, 11) to the door block at (29, 8). Answering the
-    // signpost correctly completes it, and that's the last (only) linked
-    // showquest — so the door opens.
+  test("a room's sole signpost opens its sole door (gate end to end)", () => {
+    // Synthetic raw map shaped like the shipped level's room1 gate: one
+    // `room1` rectangle over the 315 signpost at (17, 11) and the 2×2 door
+    // block at (29, 8). It runs through the real loader + grouping so the
+    // whole link pipeline is exercised — and it is built in-test, so a map
+    // edit can't move or remove the gate. Answering the signpost completes
+    // it, and since it's the only linked showquest, the door opens.
+    const width = 40;
+    const height = 17;
+    const gids = new Array<number>(width * height).fill(0);
+    gids[11 * width + 17] = TILE_INTERACTION;
+    gids[8 * width + 29] = TILE_DOOR_TOP_LEFT;
+    gids[8 * width + 30] = TILE_DOOR_TOP_RIGHT;
+    gids[9 * width + 29] = TILE_DOOR_BOTTOM_LEFT;
+    gids[9 * width + 30] = TILE_DOOR_BOTTOM_RIGHT;
+    const parsed = parseJungleMap({
+      width,
+      height,
+      layers: [
+        { type: "tilelayer", name: "layer1", width, height, data: gids },
+        {
+          type: "objectgroup",
+          name: ROOM_OBJECT_GROUP_NAME,
+          objects: [
+            { id: 1, name: "room1", x: 0, y: 0, width: 496, height: 272 },
+          ],
+        },
+      ],
+    });
     const gate = new QuestGate(
       groupRoomObjectsByName(
-        realMap.roomObjects,
-        realMap.doors,
-        realMap.interactions,
+        parsed.roomObjects,
+        parsed.doors,
+        parsed.interactions,
       ),
     );
 

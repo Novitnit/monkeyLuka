@@ -11,16 +11,19 @@ import {
   TILE_DOOR,
   TILE_SIZE,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
 } from "../tiles";
 import type { SolidGrid } from "../tiles";
 import {
   DEAD_ZONE_BASE_ROW,
   maskForKind,
   maskRectRange,
+  stairsMirrorTopRow,
   stairsTopRow,
 } from "./masks";
 import {
@@ -131,14 +134,32 @@ export function horizontalPenetration(
               dx1 - Math.max(0, 2 * TILE_SIZE - 2 * dyBottom),
             )
           : Math.max(0, TILE_SIZE - dx0);
-    } else if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
-      // 288 staircase / 464 hazard pit — pixel masks, not a single face:
-      // the box meets the shape at the nearest solid pixel column in the
-      // rows its leading edge spans (right-mover: the leftmost solid
-      // column, left-mover: the rightmost), and the deepest overlapped
-      // row wins. A wall face and a tread face resolve by the same
-      // nearest-column rule; a box riding the stepped/basin surface was
-      // exempted above.
+    } else if (kind === TILE_SLOPE_SHALLOW_MIRROR) {
+      // 290 (2·dy − dx ≥ 16): the mirror of 287 — its wedge face runs
+      // dx = 2·dy − 16 (the 2:1 line from the bottom-right corner to the
+      // left edge's midpoint), so a LEFT-mover climbs it and meets the
+      // face at the box's deepest row (`2·dyBottom − 16`, clamped to the
+      // tile's right edge once the box's bottom is below the cell — the
+      // base row is fully solid there, or the shove-back would overshoot
+      // the shallow face, mirroring 287's left-edge clamp). A right-mover
+      // meets the back side — the solid left column below the apex
+      // (dy ≥ 8) — pushed back the full-cell distance, like 287's
+      // left-mover.
+      pen =
+        dir < 0
+          ? Math.max(
+              0,
+              Math.min(TILE_SIZE, 2 * dyBottom - TILE_SIZE) - dx0,
+            )
+          : Math.max(0, dx1);
+    } else if (kind === TILE_STAIRS || kind === TILE_STAIRS_MIRROR || kind === TILE_DEAD_ZONE) {
+      // 288 staircase / 289 stairs-mirror / 464 hazard pit — pixel masks,
+      // not a single face: the box meets the shape at the nearest solid
+      // pixel column in the rows its leading edge spans (right-mover: the
+      // leftmost solid column, left-mover: the rightmost), and the deepest
+      // overlapped row wins. A wall face and a tread face resolve by the
+      // same nearest-column rule; a box riding the stepped/basin surface
+      // was exempted above.
       const mask = maskForKind(kind);
       const range = maskRectRange(dx0, dx1, dyTop, dyBottom);
       if (range) {
@@ -247,7 +268,7 @@ export function verticalPenetration(
         }
       }
     } else {
-      // The non-bracket kinds (262, 287, 288, 464) all hang their solid
+      // The non-bracket kinds (262, 287, 288, 289, 464) all hang their solid
       // below their surface line, and they all share the same guard for a
       // box that isn't landing on them: `dir > 0` skips one whose bottom
       // is below the CELL — that box is under the tile (an overhang
@@ -273,17 +294,35 @@ export function verticalPenetration(
         // from its top.
         surfaceY =
           dir > 0 ? top + TILE_SIZE - edgeMax / 2 : top + TILE_SIZE;
-      } else if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
-        // 288 staircase / 464 hazard pit — pixel-mask landing: 288 binds
-        // the topmost tread under the moving edge — the shallowest point
-        // of the stepped surface, sampled at the box's rightmost column
-        // (topRow(c) = 7 − ⌊c/2⌋), the same ride-on-the-leading-corner
-        // rule as 262/287. 464 binds the mask's shallowest top row under
-        // the edge's whole span: a box straddling a lip (cols 0/15) rests
-        // on the rim (row 0), a box fully over the open interior sinks to
-        // the base (row 13). Both undersides are flat — the base row is
-        // solid at every column, so a rising box contacts the cell's
-        // bottom edge, never the treads or the lips' undersides.
+      } else if (kind === TILE_SLOPE_SHALLOW_MIRROR) {
+        // 290 (2·dy − dx ≥ 16): the mirror of 287 — its landing surface is
+        // its own 2:1 line (dy = 8 + dx/2), sampled at the box's
+        // shallowest extent, now the LEFTMOST (edgeMin — the apex is on
+        // the cell's left edge, so a left-moving climber rides with its
+        // bottom-LEFT corner on the face). The underside is flat, exactly
+        // like 287's: the wedge fills the cell down to its bottom edge at
+        // every column, so a rising box contacts the cell's bottom edge,
+        // never the sloped face. The back side is the fully-solid LEFT
+        // column below the apex (dx = 0, dy ≥ 8).
+        surfaceY =
+          dir > 0
+            ? top + TILE_SIZE / 2 + edgeMin / 2
+            : top + TILE_SIZE;
+      } else if (kind === TILE_STAIRS || kind === TILE_STAIRS_MIRROR || kind === TILE_DEAD_ZONE) {
+        // 288 staircase / 289 stairs-mirror / 464 hazard pit — pixel-mask
+        // landing: 288 binds the topmost tread under the moving edge — the
+        // shallowest point of the stepped surface, sampled at the box's
+        // rightmost column (topRow(c) = 7 − ⌊c/2⌋), the same
+        // ride-on-the-leading-corner rule as 262/287. 289 is 288's mirror,
+        // so it binds at the box's LEFTMOST column (stairsMirrorTopRow(c) =
+        // 7 − ⌊(15−c)/2⌋) — its shallow end is the left, and a left-moving
+        // climber rides with its left edge there. 464 binds the mask's
+        // shallowest top row under the edge's whole span: a box straddling
+        // a lip (cols 0/15) rests on the rim (row 0), a box fully over the
+        // open interior sinks to the base (row 13). All three undersides
+        // are flat — the base row is solid at every column, so a rising
+        // box contacts the cell's bottom edge, never the treads or the
+        // lips' undersides.
         if (dir > 0) {
           if (kind === TILE_STAIRS) {
             const c1 = Math.max(
@@ -291,6 +330,12 @@ export function verticalPenetration(
               Math.min(TILE_SIZE - 1, Math.ceil(edgeMax) - 1),
             );
             surfaceY = top + stairsTopRow(c1);
+          } else if (kind === TILE_STAIRS_MIRROR) {
+            const c0 = Math.max(
+              0,
+              Math.min(TILE_SIZE - 1, Math.floor(edgeMin)),
+            );
+            surfaceY = top + stairsMirrorTopRow(c0);
           } else {
             // 464 hazard pit: bind the DEEPEST solid top row under the
             // edge — the basin floor (the base at DEAD_ZONE_BASE_ROW). The

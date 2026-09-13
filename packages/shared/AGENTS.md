@@ -68,9 +68,9 @@ tile's own cell (gid + tx/ty), so a caller can act on that signpost's
 identity; `interactionTileUnderFeet` is the gid-only shorthand),
 `collision/` (point/AABB tests +
 penetration helpers + `wallBeside` wall-adjacency probe, split into
-`masks.ts` (the pixel masks for 288 stairs / 464 dead zone + the shared
-box-overlap / cell-walk / pixel-mask helpers `cellOverlapRect`,
-`forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
+`masks.ts` (the pixel masks for 288 stairs / 289 stairs-mirror / 464 dead
+zone + the shared box-overlap / cell-walk / pixel-mask helpers
+`cellOverlapRect`, `forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
 `point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `door.ts` (door
 entities: each non-overlapping 2×2 block of the door gids 375/376/401/402
 is one open/closed door world object via `buildDoorEntities`, keyed by
@@ -102,11 +102,20 @@ or Colyseus imports — so it can also be unit-tested directly.
   `TILE_SLOPE_TR_BL` (109), `TILE_SLOPE_BR` (262, mirror of 109 — solid on the
   bottom-right half), `TILE_SLOPE_SHALLOW` (287, the 2:1 ramp — 16px run, 8px
   rise, solid below the line from the bottom-left corner (0, 16) to the
-  right edge's midpoint (16, 8)), `TILE_STAIRS` (288, the staircase tile — a
+  right edge's midpoint (16, 8)), `TILE_SLOPE_SHALLOW_MIRROR` (290, the
+  same ramp flipped left-right — solid below the line from the bottom-right
+  corner (16, 16) to the left edge's midpoint (0, 8), a point is solid when
+  2·dy − dx ≥ 16), `TILE_STAIRS` (288, the staircase tile — a
   pixel-mask shape in `collision/masks.ts`'s `STAIRS_MASK`, not an analytic wedge:
   eight 2px treads stepping down from the top-right to the bottom-left — the
   mirror of 287 — plus a full-height right wall, a left wall from mid-height
   down, and a solid base row, hollow between the treads and the base),
+  `TILE_STAIRS_MIRROR` (289, 288 flipped left-right — a
+  pixel-mask shape in `collision/masks.ts`'s `STAIRS_MIRROR_MASK`: eight 2px
+  treads stepping down from the top-LEFT to the bottom-right, a full-height
+  LEFT wall, a right wall from mid-height down, a solid base row, hollow
+  between treads and base — so a 289 left of a 290 continues that shallow
+  mirror ramp down),
   `TILE_DEAD_ZONE` (464, the dead-zone pit — a pixel-mask open basin in
   `collision/masks.ts`'s `DEAD_ZONE_MASK`: rows 13-15 are a solid 3px base, rows
   0-12 are entirely open; it stays its own kind so the penetration code
@@ -164,6 +173,15 @@ or Colyseus imports — so it can also be unit-tested directly.
   is the solid BACK SIDE — the ramp's top-right corner is a wall a
   left-mover meets like 262's right column. See
   `discoveries/shallow-ramp-tile-287-half-height-diagonal.md`.
+  290 is 287 mirrored left-right — `2·dy − dx ≥ 16` (solid below the
+  bottom-right-corner (16, 16) → left-edge-midpoint (0, 8) line), so every
+  branch is 287's with the directions swapped: the landing surface is the
+  line sampled at the box's LEFTMOST extent (`8 + edgeMin/2`, the riding
+  corner on the left apex side); the left-mover face is `2·dyBottom − 16`,
+  clamped to the tile's right edge below the cell; the LEFT column below
+  the apex is the solid back side a right-mover meets; the underside is
+  flat like 287's; support band `[8 + dx0/2, 8 + dx1/2]` (mirrored, the
+  binding corner on the left).
   288 is the staircase tile — a **pixel mask** (`STAIRS_MASK` in
   collision/masks.ts), so all five queries (point, AABB, slope support,
   horizontal/vertical penetration) branch on the mask directly: the tread
@@ -177,6 +195,17 @@ or Colyseus imports — so it can also be unit-tested directly.
   is dy 7) so the 287 → 288 seam settles instead of jamming the walker at
   the left wall's top row — a 287 + 288 pair is one continuous ramp to the
   top of 288.
+  289 is 288 mirrored left-right — a **pixel mask** (`STAIRS_MIRROR_MASK`
+  in collision/masks.ts): the treads step down from the top-LEFT to the
+  bottom-right, so every 288 branch has its directions swapped: the landing
+  surface samples the box's LEFTMOST column (`stairsMirrorTopRow = 7 −
+  ⌊(15−c)/2⌋` — the mirror of `stairsTopRow`, so a left-moving climber rides
+  with its left edge on the shallow end); the full-height LEFT wall and the
+  mid-height right wall block lateral motion via the nearest solid column;
+  the base row keeps the underside a flat ceiling and the interior OPEN. Its
+  support band gets the same ~1px-below-foot allowance as 288 on the
+  opposite side (a walker arriving from a sealing left neighbor sits 1px
+  below the right foot, dy 7) so a 289 + 290 pair settles like 287 + 288.
   464 is the dead-zone tile — a **pixel mask** (`DEAD_ZONE_MASK` in
   collision/masks.ts): an OPEN basin. Rows 0-12 are empty (the mouth and
   interior — nothing at all, no rim lips or side walls), rows 13-15 are a

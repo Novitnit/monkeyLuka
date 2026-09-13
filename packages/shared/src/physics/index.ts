@@ -50,12 +50,24 @@
  *         edge's midpoint (16, 8) — the ramp sits flush on the tile's
  *         bottom edge, with a solid back column under the apex;
  *         a point is solid when dx + 2·dy ≥ 32.
+ * - 290 – shallow diagonal tile, the mirror of 287 flipped left-right: solid
+ *         below the line from the bottom-right corner (16, 16) to the left
+ *         edge's midpoint (0, 8) — a point is solid when 2·dy − dx ≥ 16.
+ *         Same flush foot (from the right side), left back column under
+ *         the apex, flat underside; climbed by walking LEFT.
  * - 288 – staircase tile (a pixel mask, see STAIRS_MASK in collision/masks.ts):
  *         eight 2px-wide treads stepping down from the top-right to the
  *         bottom-left (the mirror of 287, so a 287 + 288 pair forms a
  *         continuous 32px ramp), plus a full-height right wall, a left
  *         wall from mid-height down, and a fully solid base row — the
  *         interior between the treads and the base is open.
+ * - 289 – staircase tile, the mirror of 288 flipped left-right (a pixel
+ *         mask, see STAIRS_MIRROR_MASK in collision/masks.ts): eight 2px-wide
+ *         treads stepping down from the top-LEFT to the bottom-right
+ *         (288's staircase read right-to-left, so a 289 placed left of a
+ *         290 continues that shallow mirror ramp down), plus a full-height
+ *         LEFT wall, a right wall from mid-height down, and a fully solid
+ *         base row — the interior between the treads and the base is open.
  * - 464 – dead-zone tile (a pixel mask, see DEAD_ZONE_MASK in
  *         collision/masks.ts): an OPEN hazard pit — rows 0-12 empty (the mouth)
  *         and a fully solid 3px base (rows 13-15). A player walks off the

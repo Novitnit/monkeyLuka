@@ -1,69 +1,130 @@
 /**
  * Unit tests for the server's jungle-map loader: the server must derive its
- * collision grid from the SAME `Assets/map/main.json` the browser client
+ * collision grid from the SAME raw Tiled JSON shape the browser client
  * renders, or the validated trajectory and client prediction diverge.
+ *
+ * These tests feed `parseJungleMap` SYNTHETIC raw maps. The shipped level
+ * (`Assets/map/main.json`) is art in active rework, so no test here reads
+ * it: a map edit can never change what the loader tests assert.
  */
 import { describe, expect, test } from "bun:test";
 import {
   PLAYER_SPAWN,
+  ROOM_OBJECT_GROUP_NAME,
+  TILE_DEAD_ZONE,
   TILE_DOOR,
-  TILE_SLOPE_BR,
+  TILE_DOOR_BOTTOM_LEFT,
+  TILE_DOOR_BOTTOM_RIGHT,
+  TILE_DOOR_TOP_LEFT,
+  TILE_DOOR_TOP_RIGHT,
+  TILE_INTERACTION,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
   groupRoomObjectsByName,
   isPointSolid,
 } from "@monkeyluka/shared";
 import { parseJungleMap } from "./jungle-map";
 
-/** Frozen snapshot of the real map file (Assets/map/main.json). */
-const raw = (await Bun.file(
-  new URL("../../../../Assets/map/main.json", import.meta.url),
-).json()) as Parameters<typeof parseJungleMap>[0];
+/** Wraps a layer1 gid array into the raw Tiled-JSON shape the loader reads. */
+function rawMap(
+  width: number,
+  height: number,
+  gids: number[],
+  objects?: Array<{ id: number; name?: string; x: number; y: number; width: number; height: number }>,
+): Parameters<typeof parseJungleMap>[0] {
+  const layers: Array<Record<string, unknown>> = [
+    { type: "tilelayer", name: "layer1", width, height, data: gids },
+  ];
+  if (objects) {
+    layers.push({
+      type: "objectgroup",
+      name: ROOM_OBJECT_GROUP_NAME,
+      objects,
+    });
+  }
+  return { width, height, layers };
+}
 
 describe("jungle-map loader", () => {
-  test("loads the real map's collision layer", () => {
-    const { grid, width, height } = parseJungleMap(raw);
-    expect(grid.width).toBe(120);
-    expect(grid.height).toBe(17);
-    expect(width).toBe(120 * 16);
-    expect(height).toBe(17 * 16);
+  test("loads a raw map's collision layer with the folding rules", () => {
+    // Synthetic 8×4 map exercising every transformation the loader must
+    // apply (the same ones the shipped map relies on): 57 → TILE_SOLID,
+    // 65 folds into TILE_SOLID, the four door gids fold into TILE_DOOR,
+    // each slope keeps its own kind, 464 stays TILE_DEAD_ZONE, and 315 is
+    // an interaction tile that must NOT leak into the collision grid. All
+    // dimensions derive from the layer itself — nothing is hard-coded to a
+    // particular level's tile counts.
+    const width = 8;
+    const height = 4;
+    const gids = new Array<number>(width * height).fill(0);
+    // Row 0: every distinct collision kind.
+    gids[0] = TILE_SOLID;
+    gids[1] = 65; // folds into TILE_SOLID
+    gids[2] = TILE_SLOPE_TL_BR; // 110
+    gids[3] = TILE_SLOPE_TR_BL; // 109
+    gids[4] = TILE_SLOPE_SHALLOW; // 287
+    gids[5] = TILE_STAIRS; // 288
+    gids[6] = TILE_STAIRS_MIRROR; // 289
+    gids[7] = TILE_SLOPE_SHALLOW_MIRROR; // 290
+    // Row 1: a 2×2 door block + a 464 pit.
+    gids[width + 2] = TILE_DOOR_TOP_LEFT;
+    gids[width + 3] = TILE_DOOR_TOP_RIGHT;
+    gids[2 * width + 2] = TILE_DOOR_BOTTOM_LEFT;
+    gids[2 * width + 3] = TILE_DOOR_BOTTOM_RIGHT;
+    gids[1 * width + 6] = TILE_DEAD_ZONE;
+    // Row 2: an interaction tile (must never become collision).
+    gids[2 * width + 4] = TILE_INTERACTION;
 
-    // Snapshot of the real map's layer1 (computed from main.json): the map
-    // is 120 tiles wide (the right half, columns 60-119, is empty canvas
-    // reserved for future rooms). The playable left half is unchanged: 146
-    // solid tiles (of which 3 are gid 65, folded into TILE_SOLID by
-    // buildTileGrid) and 10 sloped kinds (4×110, 2×109, 2×287, 2×288 —
-    // the two 287+288 ramp pairs; the current map has no 262). The four
-    // door tiles (375/376/401/402) become their own TILE_DOOR kind — a
-    // closed door is solid but non-sticky (walls can be grabbed, doors
-    // can't) — so they count separately. The other decoration gids (315,
-    // 464) must NOT become collision.
+    const { grid, width: worldW, height: worldH } = parseJungleMap(
+      rawMap(width, height, gids),
+    );
+    expect(grid.width).toBe(width);
+    expect(grid.height).toBe(height);
+    expect(worldW).toBe(width * 16);
+    expect(worldH).toBe(height * 16);
+
     let solid = 0;
     let doors = 0;
     let slopes = 0;
+    let pits = 0;
     for (const kind of grid.kinds) {
       if (kind === TILE_SOLID) solid += 1;
       if (kind === TILE_DOOR) doors += 1;
       if (
         kind === TILE_SLOPE_TL_BR ||
         kind === TILE_SLOPE_TR_BL ||
-        kind === TILE_SLOPE_BR ||
         kind === TILE_SLOPE_SHALLOW ||
-        kind === TILE_STAIRS
+        kind === TILE_SLOPE_SHALLOW_MIRROR ||
+        kind === TILE_STAIRS ||
+        kind === TILE_STAIRS_MIRROR
       ) {
         slopes += 1;
       }
+      if (kind === TILE_DEAD_ZONE) pits += 1;
     }
-    expect(solid).toBe(146);
-    expect(doors).toBe(4);
-    expect(slopes).toBe(10);
+    expect(solid).toBe(2); // 57 + 65 folded
+    expect(doors).toBe(4); // the whole 2×2 block folds
+    expect(slopes).toBe(6); // every slope kind preserved
+    expect(pits).toBe(1);
+    // The 315 interaction tile never reaches the collision grid.
+    expect([...grid.kinds].some((k) => k === TILE_INTERACTION)).toBe(false);
   });
 
-  test("spawn point floats above the left platform and has open air below", () => {
-    const { grid } = parseJungleMap(raw);
+  test("spawn point floats above its platform and has open air below", () => {
+    // Synthetic plaza: the spawn's column is clear air for the whole fall,
+    // with a solid floor (row 13, top y=208) directly beneath — the same
+    // “spawn is never buried and always lands” property the shipped level
+    // guarantees, restated on a fixture a map edit cannot move.
+    const width = 8;
+    const height = 17;
+    const gids = new Array<number>(width * height).fill(0);
+    for (let x = 0; x < width; x++) gids[13 * width + x] = TILE_SOLID;
+    const { grid } = parseJungleMap(rawMap(width, height, gids));
     // The spawn center (56,192) floats above the row-13 floor (top y=208).
     expect(isPointSolid(grid, PLAYER_SPAWN.x, PLAYER_SPAWN.y)).toBe(false);
     // Directly below the spawn, the platform begins at y=208.
@@ -77,26 +138,55 @@ describe("jungle-map loader", () => {
     );
   });
 
-  test("real map links room1's signpost to its door (1 showquest × 1 door)", () => {
+  test("rejects a layer whose data does not match its dimensions", () => {
+    const layer1 = {
+      type: "tilelayer",
+      name: "layer1",
+      width: 4,
+      height: 4,
+      data: [0, 0, 0],
+    };
+    expect(() =>
+      parseJungleMap({ width: 4, height: 4, layers: [layer1] }),
+    ).toThrow("Map collision layer data length 3 != 16");
+  });
+
+  test("named room objects link the signposts and doors they contain", () => {
+    // Synthetic map: a `room` objectgroup with one rectangle (room1) over a
+    // 315 signpost and a 2×2 door block. The loader must surface all three
+    // (roomObjects / interactions / doors), and grouping must link that
+    // room's signpost to its door 1-to-1 — the room1 gate shape, built
+    // in-test so map edits can't change it.
+    const width = 12;
+    const height = 6;
+    const gids = new Array<number>(width * height).fill(0);
+    gids[4 * width + 2] = TILE_INTERACTION; // signpost at (2, 4)
+    gids[1 * width + 8] = TILE_DOOR_TOP_LEFT;
+    gids[1 * width + 9] = TILE_DOOR_TOP_RIGHT;
+    gids[2 * width + 8] = TILE_DOOR_BOTTOM_LEFT;
+    gids[2 * width + 9] = TILE_DOOR_BOTTOM_RIGHT;
+    const raw = rawMap(width, height, gids, [
+      // room1: 160×96 px starting at (32, 16) — contains both entities' centers.
+      { id: 1, name: "room1", x: 32, y: 16, width: 160, height: 96 },
+    ]);
+
     const { roomObjects, doors, interactions } = parseJungleMap(raw);
+    expect(roomObjects).toHaveLength(1);
+    expect(roomObjects[0]).toMatchObject({
+      name: "room1",
+      x: 32,
+      y: 16,
+      width: 160,
+      height: 96,
+    });
+    expect(doors).toHaveLength(1);
+    expect(doors[0]).toMatchObject({ tx: 8, ty: 1 });
+    expect(interactions.gids[4 * width + 2]).toBe(TILE_INTERACTION);
+
     const groups = groupRoomObjectsByName(roomObjects, doors, interactions);
-
-    // The room objectgroup holds a single `room1` rectangle spanning the
-    // whole map (0,0, 496×272, hidden in Tiled) — the whole-map bounds
-    // rect the map originally used, restored after the split
-    // (see discoveries/door-debug-no-line-mismatched-room-object-names.md).
-    // It contains the 315 signpost at tile (17, 11) and the door block at
-    // tile (29, 8) by center, so the group still links signpost → door —
-    // 1 showquest × 1 door, no extra objects.
-    expect(roomObjects.map((o) => o.name)).toEqual(["room1"]);
-    expect(roomObjects[0]).toMatchObject({ x: 0, y: 0, width: 496, height: 272 });
     expect(groups.map((g) => g.name)).toEqual(["room1"]);
-
-    const room1 = groups[0]!;
-    expect(room1.objects).toHaveLength(1);
-    expect(room1.showquest).toHaveLength(1);
-    expect(room1.showquest[0]).toEqual({ tx: 17, ty: 11 });
-    expect(room1.doors).toHaveLength(1);
-    expect(room1.doors[0]).toMatchObject({ tx: 29, ty: 8 });
+    expect(groups[0]!.showquest).toEqual([{ tx: 2, ty: 4 }]);
+    expect(groups[0]!.doors).toHaveLength(1);
+    expect(groups[0]!.doors[0]).toMatchObject({ tx: 8, ty: 1 });
   });
 });

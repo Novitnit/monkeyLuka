@@ -135,7 +135,7 @@ every consumer must respect:
 | `bun run build:web` | Production build of the Next.js app |
 | `bun run start:server` | Run the server without watch mode |
 | `bun run typecheck` | `tsc --noEmit` for web, server, and shared |
-| `bun test` | Unit tests: shared physics/collision + server map loader |
+| `bun test` | Unit tests: shared physics/collision + server map loader. **All fixture-based**: no test reads `Assets/map/main.json` — the level is art in active rework, so a map edit must never break the suite |
 
 Per-workspace scripts also work from inside the app dir (`bun run dev` in
 `apps/web`). Don't use `npm run`; Bun's shell runner resolves workspace bins
@@ -164,7 +164,7 @@ see `discoveries/agents.md` for the format and conventions.
 
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics/` (tile
-collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes,
+collision: 57 solid, 65 folds into 57, 110/109/262/287/288/289/290 slopes,
 464 dead-zone pits, 315 interaction tiles) and renders its own prediction
 with no server round-trip. Slope contacts: 110/109 landings rest on the flat
 top lip
@@ -173,13 +173,22 @@ ramp's surface at the box's leading edge; 287 is the half-height 2:1 ramp
 (16px run, 8px rise — solid below the bottom-left-corner→right-edge-
 midpoint line, base flush with the tile's bottom edge, so a walker steps
 straight onto it from the floor; a solid back column under the apex;
-underside is a flat ceiling); 288 is the staircase tile — the mirror of 287
+underside is a flat ceiling); 290 is that ramp flipped left-right (solid
+below the bottom-right-corner→left-edge-midpoint line, 2·dy − dx ≥ 16 —
+the flush foot is now the bottom-RIGHT corner, so a walker steps onto it
+by walking LEFT, and the solid back column sits under the apex on the
+left); 288 is the staircase tile — the mirror of 287
 (2px treads stepping down from the top-right to the bottom-left) with a
 full-height right wall, a left wall from mid-height down, and a solid base
 row, hollow between the treads and the base (a pixel mask, not an analytic
 wedge), so a 287 + 288 pair forms one continuous ramp to the top of 288 —
 its seam binds the walker at 287's apex (dy 8) onto 288's left tread (dy 7)
 through a 1px-deep support allowance; see collision/masks.ts's `STAIRS_MASK`) —
+and 289 is 288 flipped left-right (the mirror staircase: treads stepping
+down from the top-LEFT to the bottom-right, a full-height LEFT wall and a
+right wall from mid-height down — see `STAIRS_MIRROR_MASK` — so a 289 left
+of a 290 continues that shallow mirror ramp down, and the landing/support
+surface binds at the box's leftmost column, the mirror of 288's rightmost) —
 documented in
 `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` and
 `discoveries/shallow-ramp-tile-287-half-height-diagonal.md`. 464 is the
@@ -267,7 +276,7 @@ never merge with or get hidden by other collision types, mirroring the
 464 pit outline. Each door's lines live on their own graphics (keyed by
 `doorKey(tx, ty)`, see `CollisionGeometry.doors` in
 `apps/web/src/game/collision/collision-geometry.ts`), so the overlay can
-hide them per door once the door opens (see below). **Opening a door is room-level puzzle progress**: the
+hide them per door once the door opens (see below) — the per-room slices are stored in a sparse array indexed by room (a 2×2 door always fits one room, so earlier rooms are `undefined` holes), which `hideDoor`/`setEnabled`/`destroy` must and do skip (`if (overlay)`), else `.setVisible` on a hole throws. **Opening a door is room-level puzzle progress**: the
 room's `QuestGate` (`apps/server/src/rooms/jungle/quest-gate.ts`) flips a
 door's entity state to `open` when every showquest interaction linked to
 it (same room-objectgroup name group, see the door-links bullet) has been
@@ -295,7 +304,8 @@ object named `room1` — a whole-map bounds rect (0,0,496×272, hidden in
 Tiled) containing the signpost at tile (17,11) and the door at tile (29,8)
 by center — so the signpost and the door are linked directly under the
 shared name — counts are 1 showquest × 1 door
-for `room1` (proved by a loader test over `Assets/map/main.json`); the
+for `room1` (proved by loader/quest-gate tests over synthetic maps —
+nothing reads the live map file, see the `bun test` row); the
 server's `loadJungleMap` exposes `roomObjects` + `doors`, and the room's
 quest gate reads the very same groups to open doors once their showquests
 are all answered correctly (`QuestGate` in

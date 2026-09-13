@@ -23,6 +23,11 @@
  *         with a solid back column under the apex. Besides the diagonal,
  *         the back column and the bottom base row are emitted as wall and
  *         floor boundary edges where they face open space.
+ * - 290 – shallow diagonal tile, the mirror of 287 flipped left-right:
+ *         solid below the line from the bottom-right corner (16, 16) to
+ *         the left edge's midpoint (0, 8). Same shape edges: the left
+ *         back column under the apex and the bottom base row, emitted
+ *         where they face open space.
  * - 288 – staircase tile (a pixel-mask shape): eight 2px treads stepping
  *         down from the top-right to the bottom-left — the mirror of 287,
  *         so a 287 + 288 pair forms a continuous ramp — with a full-height
@@ -32,6 +37,15 @@
  *         its diagonal, with the full-height right wall and the base row
  *         emitted as wall and floor boundary edges where they face open
  *         space.
+ * - 289 – staircase tile, the mirror of 288 flipped left-right (a
+ *         pixel-mask shape): eight 2px treads stepping down from the
+ *         top-LEFT to the bottom-right (so a 289 left of a 290 continues
+ *         that shallow mirror ramp down), with a full-height LEFT wall, a
+ *         right wall from mid-height down, and a solid base row. Outlined
+ *         like the other slopes; the staircase line (16, 8) → (0, 0) is
+ *         emitted as its diagonal, with the full-height left wall and the
+ *         base row emitted as wall and floor boundary edges where they
+ *         face open space.
  * - 464 – dead-zone tile (a pixel-mask hazard pit, see DEAD_ZONE_MASK in
  *         @monkeyluka/shared): an OPEN basin — no solid wall geometry to
  *         trace, just a 3px base at the cell's bottom. It is emitted as
@@ -67,11 +81,13 @@ import {
   TILE_DEAD_ZONE,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_SOLID_65,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
   buildDoorEntities,
   type DoorEntity,
 } from "@monkeyluka/shared";
@@ -98,12 +114,26 @@ export const DIAGONAL_TR_TO_BL_BOTTOM = TILE_SLOPE_BR;
  */
 export const DIAGONAL_SHALLOW = TILE_SLOPE_SHALLOW;
 /**
+ * Shallow diagonal tile, the mirror of 287 flipped left-right: solid below
+ * the bottom-aligned line from the bottom-right corner (16, 16) to the
+ * left edge's midpoint (0, 8) of the cell.
+ */
+export const DIAGONAL_SHALLOW_MIRROR = TILE_SLOPE_SHALLOW_MIRROR;
+/**
  * Staircase tile (pixel-mask shape): eight 2px treads stepping down from
  * the top-right to the bottom-left — the mirror of 287, so a 287 + 288
  * pair forms a continuous ramp — with a full-height right wall, a left
  * wall from mid-height down, and a solid base row.
  */
 export const STAIR_STEPS = TILE_STAIRS;
+/**
+ * Staircase tile, the mirror of 288 flipped left-right: eight 2px treads
+ * stepping down from the top-LEFT to the bottom-right (288's staircase
+ * read right-to-left — so a 289 left of a 290 continues that shallow ramp
+ * down), with a full-height LEFT wall, a right wall from mid-height down,
+ * and a solid base row.
+ */
+export const STAIR_STEPS_MIRROR = TILE_STAIRS_MIRROR;
 
 /** Default tile layer holding the collision geometry. */
 export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
@@ -140,7 +170,7 @@ export interface DiagonalSegment {
   x2: number;
   y2: number;
   /** Which half of the tile is solid, relative to the line. */
-  solidSide: "top-left" | "top-right" | "bottom-right";
+  solidSide: "top-left" | "top-right" | "bottom-right" | "bottom-left";
 }
 
 export interface CollisionGeometry {
@@ -189,7 +219,9 @@ export function buildCollisionGeometry(
       gid === DIAGONAL_TR_TO_BL ||
       gid === DIAGONAL_TR_TO_BL_BOTTOM ||
       gid === DIAGONAL_SHALLOW ||
-      gid === STAIR_STEPS
+      gid === DIAGONAL_SHALLOW_MIRROR ||
+      gid === STAIR_STEPS ||
+      gid === STAIR_STEPS_MIRROR
     );
   };
 
@@ -289,6 +321,44 @@ export function buildCollisionGeometry(
             side: "bottom",
           });
         }
+      } else if (gid === DIAGONAL_SHALLOW_MIRROR) {
+        // 290: the mirror of 287 — the face runs from the bottom-right
+        // corner to the left edge's midpoint — 16px of run, 8px of rise,
+        // aligned with the tile's bottom edge. It is not a corner-to-corner
+        // line, so the segment ends at the left edge's midpoint. Climbing
+        // happens walking left; a right-mover meets the back side.
+        diagonals.push({
+          x1: left + tw,
+          y1: top + th,
+          x2: left,
+          y2: top + th / 2,
+          solidSide: "bottom-left",
+        });
+        // The shape's other two boundaries: the back side (the solid left
+        // column below the apex) and the bottom base row. Drawn only where
+        // the face borders open space — a solid neighbor (a 288 to the
+        // left, a 57 floor below) covers the face, like the merged 57
+        // block edges.
+        if (!isSolid(tx - 1, ty)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top + th / 2,
+            x2: left,
+            y2: top + th,
+            kind: "wall",
+            side: "left",
+          });
+        }
+        if (!isSolid(tx, ty + 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top + th,
+            x2: left + tw,
+            y2: top + th,
+            kind: "floor",
+            side: "bottom",
+          });
+        }
       } else if (gid === STAIR_STEPS) {
         // 288: the mirror of 287 — the staircase line runs from mid-height
         // on the left (0, 8) to the cell's top-right corner (16, 0). The
@@ -313,6 +383,42 @@ export function buildCollisionGeometry(
             y2: top + th,
             kind: "wall",
             side: "right",
+          });
+        }
+        if (!isSolid(tx, ty + 1)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top + th,
+            x2: left + tw,
+            y2: top + th,
+            kind: "floor",
+            side: "bottom",
+          });
+        }
+      } else if (gid === STAIR_STEPS_MIRROR) {
+        // 289: the mirror of 288 — the staircase line runs from mid-height
+        // on the RIGHT (16, 8) to the cell's top-left corner (0, 0). The
+        // treads step down from the top-left; the solid sits below.
+        diagonals.push({
+          x1: left + tw,
+          y1: top + th / 2,
+          x2: left,
+          y2: top,
+          solidSide: "bottom-left",
+        });
+        // The shape's other two boundaries: the full-height LEFT wall
+        // (back) and the solid base row (bottom), drawn only where the
+        // face borders open space — a solid neighbor (a 57 to the left,
+        // a 57 floor below) covers the face, like the merged 57 block
+        // edges.
+        if (!isSolid(tx - 1, ty)) {
+          shapeEdges.push({
+            x1: left,
+            y1: top,
+            x2: left,
+            y2: top + th,
+            kind: "wall",
+            side: "left",
           });
         }
         if (!isSolid(tx, ty + 1)) {

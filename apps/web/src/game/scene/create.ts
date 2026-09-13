@@ -95,7 +95,7 @@ export function createSceneCreate(
 
           // Collision geometry: boundary edges of the collision blocks
           // (green = vertical wall edges, blue = horizontal floor edges)
-          // plus the 110/109/262/287 slope lines (orange). The same
+          // plus the 110/109/262/287/288/290 slope lines (orange). The same
           // `layer1` gids feed the physics grid below.
           const collision = buildCollisionGeometry(map);
           const collisionDebug = createCollisionDebug(

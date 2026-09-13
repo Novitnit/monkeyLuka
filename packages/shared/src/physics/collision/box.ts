@@ -9,10 +9,12 @@ import {
   TILE_DOOR,
   TILE_SIZE,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
 } from "../tiles";
 import type { SolidGrid } from "../tiles";
 import { DEAD_ZONE_BASE_ROW, maskForKind, maskRectRange } from "./masks";
@@ -56,10 +58,17 @@ export function aabbTouchesSolid(
     // iff that corner is solid.
     return ox1 + 2 * oy1 >= 2 * TILE_SIZE;
   }
-  if (kind === TILE_STAIRS || kind === TILE_DEAD_ZONE) {
-    // Pixel mask (STAIRS_MASK / DEAD_ZONE_MASK): the overlap rect
-    // [ox0,ox1]×[oy0,oy1] touches solid iff any solid pixel (c, r) —
-    // covering [c, c+1) × [r, r+1) — intersects it: columns
+  if (kind === TILE_SLOPE_SHALLOW_MIRROR) {
+    // Solid where 2·dy − dx ≥ TILE_SIZE (the same ramp mirrored: the face
+    // runs from the bottom-right corner to the left edge's midpoint). 2·dy
+    // − dx is maximized at the top-LEFT corner of the overlap (smallest
+    // dx, deepest dy), so reachable iff that corner is solid.
+    return 2 * oy1 - ox0 >= TILE_SIZE;
+  }
+  if (kind === TILE_STAIRS || kind === TILE_STAIRS_MIRROR || kind === TILE_DEAD_ZONE) {
+    // Pixel mask (STAIRS_MASK / STAIRS_MIRROR_MASK / DEAD_ZONE_MASK): the
+    // overlap rect [ox0,ox1]×[oy0,oy1] touches solid iff any solid pixel
+    // (c, r) — covering [c, c+1) × [r, r+1) — intersects it: columns
     // c ∈ [⌊ox0⌋, ⌈ox1⌉−1], rows likewise. This gives the walls/treads (or
     // the dead-zone base) via the mask and leaves the hollow interiors
     // open.

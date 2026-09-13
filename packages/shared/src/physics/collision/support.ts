@@ -11,10 +11,12 @@ import {
   TILE_SIZE,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
 } from "../tiles";
-import { DEAD_ZONE_BASE_ROW, stairsTopRow } from "./masks";
+import { DEAD_ZONE_BASE_ROW, stairsMirrorTopRow, stairsTopRow } from "./masks";
 import { SLOPE_RIDE_TOL, SLOPE_TOUCH_EPS } from "./geometry";
 
 /**
@@ -35,13 +37,16 @@ export function slopeSupportsBox(
 ): boolean {
   // 110 (dy ≤ dx) and 109 (dy ≤ TILE_SIZE − dx) have a solid top edge the
   // whole way across — a box resting on it is standing on the tile. 287 has
-  // no flat lip (its face only reaches the top at the far-right corner), so
-  // it is exempt like 262. Mask shapes (288, 464) resolve their own
+  // no flat lip (its face only reaches the top at the far-right corner),
+  // and its mirror 290 none at the far-left corner, so they are exempt
+  // like 262. Mask shapes (288, 289, 464) resolve their own
   // stepped/basin surfaces in the branches below.
   if (
     kind !== TILE_SLOPE_BR &&
     kind !== TILE_SLOPE_SHALLOW &&
+    kind !== TILE_SLOPE_SHALLOW_MIRROR &&
     kind !== TILE_STAIRS &&
+    kind !== TILE_STAIRS_MIRROR &&
     kind !== TILE_DEAD_ZONE &&
     dyBottom <= SLOPE_TOUCH_EPS
   ) {
@@ -52,7 +57,9 @@ export function slopeSupportsBox(
   // The surface depth across the box's span runs [minSurf, maxSurf]: 110
   // (`dy = dx`) deepens rightward (dx0 → dx1), 109/262 (`dy = 16 − dx`)
   // deepen leftward (16 − dx1 → 16 − dx0), and 287 (`dy = (16 − dx)/2`)
-  // deepens leftward at half the rate ((16 − dx1)/2 → (16 − dx0)/2). The
+  // deepens leftward at half the rate ((16 − dx1)/2 → (16 − dx0)/2) — its
+  // mirror 290 (`dy = (16 − (16 − dx))/2 = 8 + dx/2`) deepens rightward at
+  // the same rate (8 + dx0/2 → 8 + dx1/2). The
   // box rides when its bottom
   // edge sits on that line somewhere along the span — a climber dips a
   // substep below the shallow end (dyBottom ≥ minSurf − SLOPE_RIDE_TOL)
@@ -68,6 +75,14 @@ export function slopeSupportsBox(
   } else if (kind === TILE_SLOPE_SHALLOW) {
     minSurf = TILE_SIZE - dx1 / 2;
     maxSurf = TILE_SIZE - dx0 / 2;
+  } else if (kind === TILE_SLOPE_SHALLOW_MIRROR) {
+    // 290: the mirror of 287 — its face (dy = 8 + dx/2) deepens
+    // RIGHTWARD, so the binding (shallowest) point under the span is the
+    // box's leftmost extent (dx0): minSurf = 8 + dx0/2 (a left-moving
+    // climber rides the ramp with its bottom-LEFT corner on the face),
+    // maxSurf = 8 + dx1/2, the depth at the other end of the span.
+    minSurf = TILE_SIZE / 2 + dx0 / 2;
+    maxSurf = TILE_SIZE / 2 + dx1 / 2;
   } else if (kind === TILE_STAIRS) {
     // 288 staircase: the surface is the stepped tread tops (topRow(c) =
     // 7 − ⌊c/2⌋ — deepest at the left, shallowest at the right). minSurf
@@ -85,6 +100,20 @@ export function slopeSupportsBox(
     const c1 = Math.max(0, Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1));
     minSurf = stairsTopRow(c1);
     maxSurf = stairsTopRow(c0) + 1;
+  } else if (kind === TILE_STAIRS_MIRROR) {
+    // 289 stairs-mirror: 288's staircase read right-to-left — the tread
+    // tops (stairsMirrorTopRow(c) = 7 − ⌊(15−c)/2⌋) are now shallowest at
+    // the LEFT, so the binding corner is the box's leftmost extent (c0):
+    // minSurf = stairsMirrorTopRow(c0) (a left-moving climber rides the
+    // steps with its bottom-LEFT corner on the leading tread), maxSurf =
+    // stairsMirrorTopRow(c1) + 1, the depth at the other end of the span
+    // plus the same one-riser allowance 288 gets (a walker arriving from a
+    // sealing 289-left neighbor sits below the right foot's dy = 7 by a
+    // pixel — mirror of the 287 → 288 seam).
+    const c0 = Math.max(0, Math.min(TILE_SIZE - 1, Math.floor(dx0)));
+    const c1 = Math.max(0, Math.min(TILE_SIZE - 1, Math.ceil(dx1) - 1));
+    minSurf = stairsMirrorTopRow(c0);
+    maxSurf = stairsMirrorTopRow(c1) + 1;
   } else if (kind === TILE_DEAD_ZONE) {
     // 464 hazard pit: an open basin — every column's surface is the base
     // (top row 13), so the support band is the 262-style deep surface: a

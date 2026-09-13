@@ -1,12 +1,13 @@
 /**
- * Pixel masks for the two mask-shaped tile kinds (288 stairs, 464 dead-zone
- * pit): the row bitmasks themselves, plus the mask math shared by every
- * query (`maskForKind`, `maskRectRange`, `stairsTopRow`). The masks are the
- * tiles' collision shape, not an analytic wedge — see the per-mask comments
- * below for what each pixel means.
+ * Pixel masks for the mask-shaped tile kinds (288 stairs, 289 stairs-mirror,
+ * 464 dead-zone pit): the row bitmasks themselves, plus the mask math shared
+ * by every query (`maskForKind`, `maskRectRange`, `stairsTopRow`,
+ * `stairsMirrorTopRow`). The masks are the tiles' collision shape, not an
+ * analytic wedge — see the per-mask comments below for what each pixel
+ * means.
  */
 
-import { TILE_SIZE, TILE_STAIRS } from "../tiles";
+import { TILE_SIZE, TILE_STAIRS, TILE_STAIRS_MIRROR } from "../tiles";
 
 /**
  * Bitmask rows of the TILE_STAIRS (288) staircase, row-major from the
@@ -21,6 +22,23 @@ const STAIRS_MASK: readonly number[] = [
   0xc000, 0xb000, 0x8c00, 0x8300, // rows 0-3: treads 14-15, 12-13, 10-11, 8-9
   0x80c0, 0x8030, 0x800c, 0x8003, // rows 4-7: treads 6-7, 4-5, 2-3, 0-1
   0x8001, 0x8001, 0x8001, 0x8001, // rows 8-11: left wall + right wall only
+  0x8001, 0x8001, 0x8001, 0xffff, // rows 12-14: walls; row 15: full base
+];
+
+/**
+ * Bitmask rows of the TILE_STAIRS_MIRROR (289) staircase — STAIRS_MASK
+ * flipped left-right (bit c ↔ bit 15−c per row): eight 2px treads stepping
+ * down from the top-LEFT (cols 0-1 at row 0) to the bottom-right (cols
+ * 14-15 at row 7); column 0 is a full-height left wall, column 15 a wall
+ * from row 7 down; row 15 is the fully solid base. Every other pixel is
+ * the mirror of its 288 counterpart, so the two stairs tiles meet at a
+ * continuous surface (288's top-right apex / 289's top-left apex are both
+ * at row 0) and a 289 left of a 290 continues that shallow ramp down.
+ */
+const STAIRS_MIRROR_MASK: readonly number[] = [
+  0x0003, 0x000d, 0x0031, 0x00c1, // rows 0-3: treads 0-1, 2-3, 4-5, 6-7
+  0x0301, 0x0c01, 0x3001, 0xc001, // rows 4-7: treads 8-9, 10-11, 12-13, 14-15
+  0x8001, 0x8001, 0x8001, 0x8001, // rows 8-11: right wall + left wall only
   0x8001, 0x8001, 0x8001, 0xffff, // rows 12-14: walls; row 15: full base
 ];
 
@@ -56,9 +74,27 @@ export function stairsTopRow(c: number): number {
   return 7 - Math.floor(c / 2);
 }
 
-/** The pixel mask for a mask-shaped kind (288 stairs / 464 dead zone). */
-export function maskForKind(kind: number): readonly number[] {
-  return kind === TILE_STAIRS ? STAIRS_MASK : DEAD_ZONE_MASK;
+/**
+ * Topmost solid pixel row at column `c` of the MIRRORED stairs mask (289,
+ * STAIRS_MIRROR_MASK): the mirror of `stairsTopRow` — column c of the
+ * mirror is column 15−c of the original, so the treads' tops step up one
+ * row every two columns from row 7 at the RIGHT (cols 14-15) to row 0 at
+ * the LEFT (cols 0-1, the full-height left wall starting at row 0). The
+ * box's landing / support surface sits at that row; a left-moving climber
+ * rides with its left edge on the shallow (low-row-number) end.
+ */
+export function stairsMirrorTopRow(c: number): number {
+  return 7 - Math.floor((15 - c) / 2);
+}
+
+/** The pixel mask for a mask-shaped kind (288 stairs / 289 stairs-mirror /
+ * 464 dead zone). */
+export function maskForKind(
+  kind: number,
+): readonly number[] {
+  if (kind === TILE_STAIRS) return STAIRS_MASK;
+  if (kind === TILE_STAIRS_MIRROR) return STAIRS_MIRROR_MASK;
+  return DEAD_ZONE_MASK;
 }
 
 /**

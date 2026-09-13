@@ -2,7 +2,7 @@
  * Phaser debug overlay for the collision geometry: draws every boundary edge
  * of the collision blocks on top of the map, clipped to each room the same
  * way the tiles are. Horizontal edges (floors) are blue, vertical edges
- * (walls) are green, the 110/109/262/287 slope lines (orange) take over the
+ * (walls) are green, the 110/109/262/287/288/290 slope lines (orange) take over the
  * block boundary wherever they touch a 57 tile, and the dead-zone (464) pit
  * outline is drawn RED (the `hazard` segments from collision-geometry).
  * Each door Entity's 2×2 perimeter is drawn PURPLE on its OWN graphics
@@ -243,20 +243,20 @@ export function createCollisionDebug(
       // on — their lines describe a closed door that no longer exists.
       for (const [key, overlays] of doorGraphics) {
         const visible = on && !hiddenDoors.has(key);
-        for (const overlay of overlays) overlay.setVisible(visible);
+        for (const overlay of overlays) if (overlay) overlay.setVisible(visible);
       }
     },
     hideDoor(tx: number, ty: number): void {
       const key = doorKey(tx, ty);
       hiddenDoors.add(key);
       for (const overlay of doorGraphics.get(key) ?? []) {
-        overlay.setVisible(false);
+        if (overlay) overlay.setVisible(false);
       }
     },
     destroy(): void {
       for (const overlay of graphics) overlay.destroy();
       for (const overlays of doorGraphics.values()) {
-        for (const overlay of overlays) overlay.destroy();
+        for (const overlay of overlays) if (overlay) overlay.destroy();
       }
     },
   };

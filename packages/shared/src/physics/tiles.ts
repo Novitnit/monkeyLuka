@@ -28,6 +28,17 @@
  *         edge: a ground-level walker steps straight onto it (there is no
  *         flat lip to land on, and the tile's top edge is open except at
  *         the apex).
+ * - 290 – shallow diagonal tile, the mirror of 287 flipped left-right: the
+ *         face runs from the bottom-right corner (16, 16) to the left
+ *         edge's midpoint (0, 8) — solid BELOW that line, so a point is
+ *         solid when 2·dy − dx ≥ 16 (equivalently dx ≤ 2·dy − 16). It is
+ *         built and walked exactly like 287, mirrored: the foot is the
+ *         bottom-right corner (flush with the bottom edge — a ground-level
+ *         walker stepping LEFT steps straight onto it), the left column
+ *         below the apex (dx = 0, dy ≥ 8) is the back side (the solid wall
+ *         under the ramp's top), the underside is a flat ceiling, and the
+ *         climbing surface is the line dy = 8 + dx/2, sampled at the box's
+ *         leftmost extent (the apex side).
  * - 288 – staircase tile (the pixel shape in collision/masks.ts's STAIRS_MASK):
  *         eight 2px-wide, 1px-tall treads stepping DOWN from the top-right
  *         (cols 14-15 at row 0) to the bottom-left (cols 0-1 at row 7) —
@@ -39,6 +50,17 @@
  *         stepped tread tops at dy = 7 − ⌊c/2⌋). Unlike 287 there is no
  *         flush foot: the treads rest on walls, so climbing it is like a
  *         staircase (or a ramp's continuation), not a ground-level walk-on.
+ * - 289 – staircase tile, the mirror of 288 flipped left-right (the pixel
+ *         shape in collision/masks.ts's STAIRS_MIRROR_MASK): eight 2px-wide,
+ *         1px-tall treads stepping DOWN from the top-LEFT (cols 0-1 at row
+ *         0) to the bottom-right (cols 14-15 at row 7) — 288's staircase
+ *         read right-to-left, so placed left of a 290 it continues the
+ *         shallow mirror ramp down. Column 0 is a full-height left wall,
+ *         column 15 a wall from row 7 down, row 15 a fully solid base,
+ *         and the interior between the treads and the base is OPEN; the
+ *         walkable surface is the stepped tread tops at dy = 7 − ⌊(15−c)/2⌋.
+ *         Climbing it walks left, like 290; unlike 290 there is no flush
+ *         foot (the treads rest on walls, exactly like 288).
  * - 464 – dead-zone tile (the hazard pit, a pixel mask like 288's): an
  *         OPEN basin — rows 0-12 empty (the mouth and interior, no rim
  *         lips or side walls) with a fully solid 3px base at the cell's
@@ -96,6 +118,17 @@ export const TILE_SLOPE_BR = 262;
  */
 export const TILE_SLOPE_SHALLOW = 287;
 /**
+ * Shallow diagonal tile, the mirror of 287 flipped left-right: solid below
+ * the bottom-aligned 2:1 line from the bottom-right corner (16, 16) to the
+ * left edge's midpoint (0, 8) — a point is solid when 2·dy − dx ≥ 16
+ * (262's wedge at half the rise, anchored to the cell's bottom edge and
+ * mirrored). The left column below the apex (dx = 0, dy ≥ 8) is the back
+ * side, a solid wall under the ramp's top; the foot (bottom-right corner)
+ * sits flush with the bottom edge, so a ground-level walker steps straight
+ * onto it from the floor, like 287.
+ */
+export const TILE_SLOPE_SHALLOW_MIRROR = 290;
+/**
  * Staircase tile: a pixel-mask shape (see STAIRS_MASK in collision/masks.ts) —
  * eight 2px-wide treads stepping down from the top-right to the bottom-left
  * (the mirror-ish of 287, so a 287 followed by a 288 forms a continuous
@@ -104,6 +137,17 @@ export const TILE_SLOPE_SHALLOW = 287;
  * lateral motion; the tread tops (dy = 7 − ⌊c/2⌋) are the landing surface.
  */
 export const TILE_STAIRS = 288;
+/**
+ * Staircase tile, the mirror of 288 flipped left-right (see
+ * STAIRS_MIRROR_MASK in collision/masks.ts): eight 2px treads stepping down
+ * from the top-LEFT to the bottom-right — 288's staircase read
+ * right-to-left, so a 289 placed left of a 290 continues the shallow
+ * mirror ramp (290) down — with a full-height LEFT wall, a right wall from
+ * mid-height down, and a fully solid base row. The wall and base faces
+ * block lateral motion; the tread tops (dy = 7 − ⌊(15−c)/2⌋) are the
+ * landing surface, climbed walking left.
+ */
+export const TILE_STAIRS_MIRROR = 289;
 /**
  * Dead-zone tile: a pixel-mask hazard pit (see DEAD_ZONE_MASK in
  * collision/masks.ts) — an OPEN basin with a 3px solid base at the cell's
@@ -169,7 +213,9 @@ export type TileKind =
   | typeof TILE_SLOPE_TR_BL
   | typeof TILE_SLOPE_BR
   | typeof TILE_SLOPE_SHALLOW
+  | typeof TILE_SLOPE_SHALLOW_MIRROR
   | typeof TILE_STAIRS
+  | typeof TILE_STAIRS_MIRROR
   | typeof TILE_DEAD_ZONE;
 
 /** A compact grid of tile kinds (0 = open, otherwise the gid). */
@@ -214,7 +260,9 @@ export function buildTileGrid(layer: CollisionLayerData): SolidGrid {
           gid === TILE_SLOPE_TR_BL ||
           gid === TILE_SLOPE_BR ||
           gid === TILE_SLOPE_SHALLOW ||
+          gid === TILE_SLOPE_SHALLOW_MIRROR ||
           gid === TILE_STAIRS ||
+          gid === TILE_STAIRS_MIRROR ||
           gid === TILE_DEAD_ZONE ||
           gid === TILE_SOLID
           ? gid

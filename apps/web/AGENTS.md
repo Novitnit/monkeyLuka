@@ -130,7 +130,8 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   typechecked.
 - Collision prep: `src/game/collision/collision-geometry.ts` (engine-free,
   like `tiled-map.ts`)
-  extracts collision geometry from the `layer1` tiles — 57/65/109/110/262/287/288
+  extracts collision geometry from the `layer1` tiles —
+  57/65/109/110/262/287/288/289/290
   tiles form one solid block wherever adjacent (a 57 side bordering a slope
   emits no straight edge; the slope line takes over that boundary) plus the
   464 dead-zone tiles, which have no wall geometry (an OPEN pit, see
@@ -142,8 +143,9 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   bordering a wall/floor still emits its own full outline. Blocks
   are traced to boundary edges (`kind: "floor"` for horizontal runs, `"wall"`
   for vertical; `side` tells which side the solid is on) plus the
-  109/110/262/287/288 diagonal lines (288's staircase line is drawn as the
-  top-aligned 2:1 segment (0, 8) → (16, 0)). 287/288 also emit their solid
+  109/110/262/287/288/289/290 diagonal lines (288's staircase line is drawn
+  as the top-aligned 2:1 segment (0, 8) → (16, 0); 289, its left-right
+  mirror, as (16, 8) → (0, 0)). 287/288/289/290 also emit their solid
   back wall and bottom base row as straight boundary edges where they face
   open space (a solid neighbor — another ramp tile or a 57 floor — covers
   the face and renders no line), so the debug overlay outlines the

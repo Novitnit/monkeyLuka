@@ -5,8 +5,6 @@
  * simulation honest: the server's anti-cheat is only as good as this math.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
@@ -23,10 +21,12 @@ import {
   TILE_DOOR,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
+  TILE_SLOPE_SHALLOW_MIRROR,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  TILE_STAIRS_MIRROR,
   buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
@@ -89,9 +89,9 @@ function settle(grid: SolidGrid, x: number, y: number) {
 describe("tile grid", () => {
   test("builds kinds from gids and ignores non-solid tiles", () => {
     const grid = buildTileGrid(
-      layer(8, 1, [
+      layer(9, 1, [
         0, TILE_SOLID, TILE_SLOPE_TL_BR, TILE_SLOPE_TR_BL, TILE_SLOPE_BR,
-        TILE_STAIRS, 65, 315,
+        TILE_STAIRS, 65, 315, TILE_SLOPE_SHALLOW_MIRROR,
       ]),
     );
     expect(grid.kinds[0]).toBe(0);
@@ -106,6 +106,8 @@ describe("tile grid", () => {
     expect(grid.kinds[6]).toBe(TILE_SOLID);
     // 315 also appears in layer1 but is not a collision tile — ignored.
     expect(grid.kinds[7]).toBe(0);
+    // 290 is the mirror of 287 — a real slope kind, kept as itself.
+    expect(grid.kinds[8]).toBe(TILE_SLOPE_SHALLOW_MIRROR);
   });
 
   test("point solidity respects the exact slope halves", () => {
@@ -618,6 +620,200 @@ describe("shallow ramp (287, 2:1)", () => {
   });
 });
 
+describe("shallow ramp mirror (290, 2:1, flipped from 287)", () => {
+  test("point solidity respects the mirrored line (2·dy − dx ≥ 16)", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_SLOPE_SHALLOW_MIRROR]));
+    // Solid below the line from the bottom-right corner (16, 16) to the
+    // left edge's midpoint (0, 8) — 287's ramp flipped left-right. Open
+    // above the face (the top-right region); the left column below the
+    // apex is the solid back side.
+    expect(isPointSolid(grid, 15.6, 15.8)).toBe(true); // right base, on the line near the bottom edge
+    expect(isPointSolid(grid, 0.1, 8.05)).toBe(true); // near the apex (left edge's midpoint)
+    expect(isPointSolid(grid, 8, 12)).toBe(true); // mid-span on the line (24 − 8 = 16)
+    expect(isPointSolid(grid, 14, 15)).toBe(true); // 30 − 14 = 16, on the line
+    expect(isPointSolid(grid, 14, 14)).toBe(false); // 28 − 14 = 14 < 16, open above the face
+    expect(isPointSolid(grid, 16, 15)).toBe(false); // above the right base
+    expect(isPointSolid(grid, 1, 9)).toBe(true); // back side below the apex
+    expect(isPointSolid(grid, 1, 6)).toBe(false); // above the apex: the top-left corner is open
+    expect(isPointSolid(grid, 8, 4)).toBe(false); // 8 − 8 = 0 < 16
+    expect(isPointSolid(grid, 13, 12)).toBe(false); // 24 − 13 = 11 < 16
+    expect(isPointSolid(grid, 4, 14)).toBe(true); // deep, solid
+  });
+
+  test("box solidity reports touches with the mirrored wedge", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_SLOPE_SHALLOW_MIRROR]));
+    // The solid is below the line 2·dy − dx = 16, maximized at the
+    // overlap's top-LEFT corner (ox0, oy1): reachable iff it is solid.
+    expect(isBoxSolid(grid, 0, 12, 10, 10)).toBe(true); // deep left side
+    expect(isBoxSolid(grid, 14, 2, 4, 4)).toBe(false); // tucked open top-right
+    expect(isBoxSolid(grid, 2, 3, 4, 4)).toBe(false); // over the apex — the top is open
+    expect(isBoxSolid(grid, 12, 12, 6, 6)).toBe(true); // low band is solid
+  });
+
+  test("lands on the mirrored 2:1 surface, binding the LEFT edge", () => {
+    // 290 at (2,2), flush on a solid floor (row 3). A falling box rests
+    // on the line itself, sampled at its leftmost extent (dx0 = 0 — the
+    // apex side): bottom = 32 + (8 + 0/2) = 40 → center 33. The SAME box
+    // on a 287 would bind at its right edge (dx1 = 10.5 → bottom 42.75),
+    // so this asserts the flip, not a symmetric coincidence.
+    const grid = buildTileGrid(layer(4, 4, [
+      0, 0, 0, 0,
+      0, 0, 0, 0,
+      0, 0, TILE_SLOPE_SHALLOW_MIRROR, 0,
+      TILE_SOLID, TILE_SOLID, TILE_SOLID, TILE_SOLID,
+    ]));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 4; // span dx [0, 10.5]
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 600; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(
+      2 * TILE_SIZE + TILE_SIZE / 2 - config.height / 2,
+      1,
+    );
+  });
+
+  test("a floor-level walker steps onto the ramp at its flush foot", () => {
+    // Ramp at (2,2) on a solid floor (row 3). Its base is flush on the
+    // floor (the face starts at the bottom-right corner, 48,48), so a
+    // grounded walker walking LEFT from the floor is lifted onto the
+    // ramp immediately — never blocked at an invisible face.
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW_MIRROR;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 3 * TILE_SIZE + 2; // on the floor, just right of the foot
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    // A few steps: it must already be riding the face (feet above the
+    // floor), never blocked at the invisible old face.
+    let climbed = false;
+    for (let i = 0; i < 12; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (state.y + config.height / 2 < floorY + config.height / 2 - 0.5) {
+        climbed = true;
+      }
+    }
+    expect(climbed).toBe(true);
+    expect(state.grounded).toBe(true);
+    expect(state.x).toBeLessThan(3 * TILE_SIZE);
+  });
+
+  test("walks up the 290 ramp from the floor to the apex without violations", () => {
+    // Same layout: ramp at (2,2) on a closed floor (row 3). A grounded
+    // walker crosses the flush foot and rides the mirrored 2:1 face up
+    // to the apex (32, 40) — every report must pass anti-cheat, exactly
+    // like 287's uphill march (just mirrored).
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW_MIRROR;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 3 * TILE_SIZE + 2;
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    for (let i = 0; i < 400; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x < 2 * TILE_SIZE + config.width / 2) break; // left edge near the tile's left edge — the apex
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It left the floor and now rides the face at the apex (feet ≈ 40 —
+    // the apex at dy 8 on the cell's left edge).
+    expect(state.y).toBeCloseTo(
+      2 * TILE_SIZE + TILE_SIZE / 2 - config.height / 2,
+      0,
+    );
+  });
+
+  test("a box on the left is wall-blocked by the back side, never entered", () => {
+    // The left column below the apex (dx = 0, dy ≥ 8) is solid, and the
+    // base row is solid the whole way across — so a ground-level box
+    // standing on the floor to the left of the ramp cannot walk right
+    // through it: it meets the tile's left face as a wall.
+    const gids = new Array<number>(8 * 4).fill(0);
+    gids[2 * 8 + 2] = TILE_SLOPE_SHALLOW_MIRROR;
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 4, gids));
+    const state = createPlayerState(config);
+    state.x = 1 * TILE_SIZE + 8; // left of the ramp, on the floor
+    state.y = 3 * TILE_SIZE - config.height / 2; // feet on the floor (48)
+    state.grounded = true;
+    state.vy = 0;
+    for (let i = 0; i < 240; i++) {
+      stepPlayer(
+        state,
+        { left: false, right: true, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+    }
+    expect(state.grounded).toBe(true);
+    // Never entered the ramp's cell at floor level — its right edge stays
+    // at the tile's left face (x = 32), so the center is ≤ 32 + w/2 + 1.
+    expect(state.x).toBeLessThanOrEqual(2 * TILE_SIZE + config.width / 2 + 1);
+  });
+
+  test("a rising box under the ramp hits the flat underside, not the face", () => {
+    // 290 floating at (2,1) with open air below: the wedge fills the cell
+    // down to its bottom edge at every column, so the underside is a flat
+    // ceiling at y = 32 — even under the ramp's deep right wing (the
+    // mirror of 287's flat-underside test, box under the deep side).
+    const grid = buildTileGrid(layer(4, 3, [
+      0, 0, 0, 0,
+      0, 0, TILE_SLOPE_SHALLOW_MIRROR, 0,
+      0, 0, 0, 0,
+    ]));
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 14; // under the deep right wing (dx ≈ 14)
+    state.y = 2.5 * TILE_SIZE; // below the tile, rising
+    state.vy = -config.jumpSpeed / 2; // moving up, half a jump
+    let minHead = Infinity;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      minHead = Math.min(minHead, state.y - config.height / 2);
+    }
+    // The flat underside (y = 32) bounces the head back — it must never
+    // tunnel past the cell bottom, and it must have reached it.
+    expect(minHead).toBeGreaterThanOrEqual(2 * TILE_SIZE - 0.05);
+    expect(minHead).toBeLessThanOrEqual(2 * TILE_SIZE + 0.05);
+  });
+});
+
 describe("staircase tile (288, 2:1 steps)", () => {
   test("point solidity matches the pixel mask", () => {
     const grid = buildTileGrid(layer(1, 1, [TILE_STAIRS]));
@@ -750,6 +946,153 @@ describe("staircase tile (288, 2:1 steps)", () => {
     // bottom edge — even over the hollow interior.
     const grid = buildTileGrid(
       layer(4, 3, [0, 0, 0, 0, 0, 0, TILE_STAIRS, 0, 0, 0, 0, 0]),
+    );
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 6; // under the hollow interior
+    state.y = 2.5 * TILE_SIZE; // below the tile, rising
+    state.vy = -config.jumpSpeed / 2;
+    let minHead = Infinity;
+    for (let i = 0; i < 30; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      minHead = Math.min(minHead, state.y - config.height / 2);
+    }
+    expect(minHead).toBeGreaterThanOrEqual(2 * TILE_SIZE - 0.05);
+    expect(minHead).toBeLessThanOrEqual(2 * TILE_SIZE + 0.05);
+  });
+});
+
+describe("mirrored staircase tile (289, 2:1 steps)", () => {
+  test("point solidity matches the mirrored pixel mask", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_STAIRS_MIRROR]));
+    // 288's staircase reflected left-right: eight 2px-wide treads step
+    // down from the top-left (cols 0-1, row 0) to the bottom-right (cols
+    // 14-15, row 7); col 0 is a full-height left wall, col 15 a wall from
+    // row 7 down, row 15 the full base; the interior is open.
+    expect(isPointSolid(grid, 15.5, 0.4)).toBe(false); // open top-right
+    expect(isPointSolid(grid, 0.5, 0.4)).toBe(true); // top tread (left)
+    expect(isPointSolid(grid, 1.5, 1.5)).toBe(false); // under the top tread (open; col 0 is the left wall)
+    expect(isPointSolid(grid, 2.5, 1.5)).toBe(true); // second tread
+    expect(isPointSolid(grid, 2.5, 2.5)).toBe(false); // under it
+    expect(isPointSolid(grid, 14.5, 7.5)).toBe(true); // rightmost tread
+    expect(isPointSolid(grid, 14.5, 6.5)).toBe(false); // above it
+    expect(isPointSolid(grid, 8, 12)).toBe(false); // hollow interior
+    expect(isPointSolid(grid, 0.5, 12)).toBe(true); // left wall
+    expect(isPointSolid(grid, 15.5, 12)).toBe(true); // right wall
+    expect(isPointSolid(grid, 8, 15.5)).toBe(true); // base row
+  });
+
+  test("box solidity reads the mask: walls/treads solid, hollow open", () => {
+    const grid = buildTileGrid(layer(1, 1, [TILE_STAIRS_MIRROR]));
+    expect(isBoxSolid(grid, 0.5, 11, 3, 6)).toBe(true); // left wall (col 0)
+    expect(isBoxSolid(grid, 15.5, 11, 3, 6)).toBe(true); // right wall (col 15, rows 8-14)
+    expect(isBoxSolid(grid, 8, 11, 8, 4)).toBe(false); // hollow interior
+    expect(isBoxSolid(grid, 0.5, 0.5, 3, 1)).toBe(true); // top tread (cols 0-1)
+    expect(isBoxSolid(grid, 15, 0.5, 3, 1)).toBe(false); // open top-right
+  });
+
+  test("lands on the mirrored staircase, binding the topmost tread under the span", () => {
+    // 289 at (2,1) floating in open air: the box drops onto the steps and
+    // rests on the shallowest tread under its span — its LEFTMOST column,
+    // the mirror of 288's ride-on-the-leading-corner rule.
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_STAIRS_MIRROR;
+    const grid = buildTileGrid(layer(8, 3, gids));
+
+    // Left edge at 32.5 → cell dx 0.5 → stairsMirrorTopRow(0) = 0 → bottom
+    // = cell top (16) → center 9 (flush on the top tread).
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 7;
+    state.y = TILE_SIZE;
+    for (let i = 0; i < 900; i++) {
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (state.grounded) break;
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(TILE_SIZE - config.height / 2, 3);
+  });
+
+  test("a walker climbs the full mirrored staircase from foot to top without violations", () => {
+    // 289 at (2,1) with open air around it; the walker starts on the
+    // rightmost tread (bottom = top + stairsMirrorTopRow(15) = 23) and
+    // rides the treads up, walking LEFT, to the top (bottom = 16).
+    const grid = buildTileGrid(
+      layer(6, 3, [0, 0, 0, 0, 0, 0, 0, 0, TILE_STAIRS_MIRROR, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    );
+    const state = createPlayerState(config);
+    state.x = 2 * TILE_SIZE + 12;
+    state.y = TILE_SIZE + 7 - config.height / 2;
+    state.grounded = true;
+    state.vy = 0;
+    const violations: string[] = [];
+    let lastValid = { x: state.x, y: state.y };
+    let minBottom = state.y + config.height / 2;
+    for (let i = 0; i < 300; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      minBottom = Math.min(minBottom, state.y + config.height / 2);
+      if (i % 3 === 0) {
+        const v = validatePositionReport(
+          grid,
+          { px: state.x, py: state.y },
+          lastValid,
+          { px: lastValid.x, py: lastValid.y },
+          3 / 60,
+          config,
+        );
+        if (v.length) violations.push(`s${i}:${v.join("+")}`);
+        lastValid = { x: state.x, y: state.y };
+      }
+      if (state.x - config.width / 2 < 2 * TILE_SIZE) break; // left edge off the tile
+    }
+    expect(violations).toEqual([]);
+    expect(state.grounded).toBe(true);
+    // It climbed from the right foot (bottom 23) to the top tread (bottom 16).
+    expect(minBottom).toBeLessThanOrEqual(TILE_SIZE + 0.05);
+    expect(minBottom).toBeGreaterThan(TILE_SIZE - 1);
+  });
+
+  test("a floor-level box is wall-blocked by the right limb, never hoisted", () => {
+    // 289 at (2,1) directly above a solid floor (row 2). The base row is
+    // solid, so a box on the floor cannot walk under the tile; its right
+    // limb (col 15, rows 7-15) blocks a box pushing in at floor level —
+    // and the box must not be hoisted onto the steps (no flush foot:
+    // the lowest tread top is 1px above the cell's bottom edge).
+    const gids = new Array<number>(8 * 3).fill(0);
+    gids[1 * 8 + 2] = TILE_STAIRS_MIRROR;
+    for (let x = 0; x < 8; x++) gids[2 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 3, gids));
+    const state = createPlayerState(config);
+    state.x = 3 * TILE_SIZE + 2;
+    state.y = 2 * TILE_SIZE - config.height / 2; // feet on the floor (32)
+    state.grounded = true;
+    state.vy = 0;
+    const floorY = state.y;
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(
+        state,
+        { left: true, right: false, jump: false },
+        grid,
+        STEP,
+        config,
+      );
+      // Never lifted off the floor, never passed the tile's right face.
+      expect(state.y).toBeLessThanOrEqual(floorY + 1e-6);
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.x).toBeGreaterThanOrEqual(3 * TILE_SIZE + config.width / 2 - 0.5);
+  });
+
+  test("a rising box under the mirrored staircase hits the flat underside, not a tread", () => {
+    // 289 floating at (2,1) with open air below: the base row is solid at
+    // every column, so the underside is a flat ceiling at the cell's
+    // bottom edge — even over the hollow interior.
+    const grid = buildTileGrid(
+      layer(4, 3, [0, 0, 0, 0, 0, 0, TILE_STAIRS_MIRROR, 0, 0, 0, 0, 0]),
     );
     const state = createPlayerState(config);
     state.x = 2 * TILE_SIZE + 6; // under the hollow interior
@@ -962,38 +1305,58 @@ describe("dead zone tile (464, hazard pit)", () => {
   });
 });
 
-describe("the real jungle map", () => {
-  // Loads the actual Assets/map/main.json collision layer (60×17 tiles) —
-  // the tests exercise the game's real geometry, not an approximation.
-  function jungleGrid(): SolidGrid {
-    const raw = JSON.parse(
-      readFileSync(
-        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
-        "utf8",
-      ),
-    ) as {
-      layers: Array<{
-        name: string;
-        width: number;
-        height: number;
-        data: number[] | string;
-      }>;
+describe("jungle physics (frozen map fixture)", () => {
+  // Frozen fixture: the shipped level's left section (40×17) as it stood
+  // when these tests were written. Deliberately decoupled from
+  // `Assets/map/main.json` — the map is actively reworked, and a map edit
+  // must never change what these simulation tests assert. The fixture keeps
+  // the geometry the assertions below were tuned against: the row-13 floor
+  // (top 208) under the spawn, the 287/288 ramp pair and row-12 runway
+  // (top 192), the 110/109 chamfers, and the 464 dead-zone pits at the
+  // bottom. Legend per cell: `.` open, `#` solid (57/65), `A` 110, `B` 109,
+  // `C` 287, `D` 288, `E` 464, `S` 315 (non-collision — folds to 0).
+  function jungleFixtureGrid(): SolidGrid {
+    const rows = [
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "........................................",
+      "....................#################...",
+      ".................S..####...##########...",
+      "......CD#.....CD########...##########...",
+      ".########....###########...A#########...",
+      ".A#######....###########......#######...",
+      "..######B....##########B......A######...",
+      "EE######EEEEEA#########EEEEEEEE######...",
+    ];
+    const legend: Record<string, number> = {
+      "#": TILE_SOLID,
+      A: TILE_SLOPE_TL_BR,
+      B: TILE_SLOPE_TR_BL,
+      C: TILE_SLOPE_SHALLOW,
+      D: TILE_STAIRS,
+      E: TILE_DEAD_ZONE,
+      S: TILE_INTERACTION,
     };
-    const layer1 = raw.layers.find((l) => l.name === "layer1");
-    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
-    const gids =
-      typeof layer1.data === "string"
-        ? layer1.data.split(",").map((v) => Number(v.trim()))
-        : layer1.data;
-    return buildTileGrid({
-      width: layer1.width,
-      height: layer1.height,
-      gids,
+    const width = rows[0]!.length;
+    const gids = new Array<number>(width * rows.length).fill(0);
+    rows.forEach((row, y) => {
+      for (let x = 0; x < width; x++) {
+        const gid = legend[row[x]!];
+        if (gid !== undefined) gids[y * width + x] = gid;
+      }
     });
+    return buildTileGrid(layer(width, rows.length, gids));
   }
 
   test("spawns at PLAYER_SPAWN and falls onto the left platform", () => {
-    const grid = jungleGrid();
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     expect(state.x).toBe(PLAYER_SPAWN.x);
     expect(state.y).toBe(PLAYER_SPAWN.y);
@@ -1007,11 +1370,11 @@ describe("the real jungle map", () => {
   });
 
   test("a jump from the floor clears the 16px rise onto the ramp", () => {
-    // The redesigned map has no same-height platform gap: the left floor
-    // (row 13, feet 208) is one tile below the 287/288 ramp runway (row 12,
-    // feet 192). From the spawn landing spot a jump with a short run-up
-    // must rise onto the ramp — never fall into the pit to its right.
-    const grid = jungleGrid();
+    // The fixture has no same-height platform gap: the left floor (row 13,
+    // feet 208) is one tile below the 287/288 ramp runway (row 12, feet
+    // 192). From the spawn landing spot a jump with a short run-up must
+    // rise onto the ramp — never fall into the pit to its right.
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
       stepPlayer(state, noInput, grid, STEP, config);
@@ -1040,7 +1403,7 @@ describe("the real jungle map", () => {
     // A ground run from the spawn crosses the ramp runway and drops off its
     // end into the pit — the sim must never end up floating or outside the
     // world (a pure bounds check; the exact landing spot is not asserted).
-    const grid = jungleGrid();
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
       stepPlayer(state, noInput, grid, STEP, config);
@@ -1059,12 +1422,13 @@ describe("the real jungle map", () => {
   });
 
   test("falls into the pit and stops on the dead-zone basin floor", () => {
-    // x=192 drops into the gap between the platforms at cols 13-22; below it
-    // sits a TILE_DEAD_ZONE (464) pit at (12,16) — the hazard basin's
-    // base (rows 13-15, top at worldHeight−3) catches the fall. The world
-    // floor would be at worldHeight, but the dead zone's 3px base (the
-    // basin floor) is what stops it.
-    const grid = jungleGrid();
+    // x=192 drops into the gap between the fixture's floor plates (the
+    // plaza at cols 9-12); below it sits a TILE_DEAD_ZONE (464) pit at
+    // (12,16) — the hazard basin's base (rows 13-15, top at
+    // worldHeight−3) catches the fall. The world floor would be at
+    // worldHeight, but the dead zone's 3px base (the basin floor) is what
+    // stops it.
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     state.x = 12 * TILE_SIZE; // middle of the gap between platforms
     state.y = 14 * TILE_SIZE;
@@ -1080,12 +1444,12 @@ describe("the real jungle map", () => {
   });
 
   test("walking left off the floor's edge drops into the dead-zone pit", () => {
-    // The redesigned map's left floor (row 13) runs from x=16 to x=144; the
-    // spawn lands mid-floor, so the old “over the void” start no longer
-    // exists. Walking left past x=16 falls over the edge into the 464
-    // dead-zone pit at cols 0-1 (row 16): the basin's base (top at
-    // worldHeight−3) stops the fall, not the world floor.
-    const grid = jungleGrid();
+    // The fixture's left floor (row 13) runs from x=16 to x=144; the spawn
+    // lands mid-floor, so the old “over the void” start no longer exists.
+    // Walking left past x=16 falls over the edge into the 464 dead-zone
+    // pit at cols 0-1 (row 16): the basin's base (top at worldHeight−3)
+    // stops the fall, not the world floor.
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     for (let i = 0; i < 600 && !state.grounded; i++) {
       stepPlayer(state, noInput, grid, STEP, config);
@@ -1105,13 +1469,13 @@ describe("the real jungle map", () => {
   });
 
   test("walks the full left section from spawn without tripping the anti-cheat", () => {
-    // Regression for the slope kick, re-anchored to the redesigned map:
-    // from the actual spawn the walker falls to the row-13 floor, climbs
-    // the 287 ramp, the 288 staircase, and the row-12 runway (feet 192)
-    // with every movement report passing validation. The old 262 bug (the
-    // vertical sampler burying the box under the ramp, reading every report
-    // as buried-in-geometry) is exercised here by the same rising motion.
-    const grid = jungleGrid();
+    // Regression for the slope kick, run against the frozen fixture: from
+    // the actual spawn the walker falls to the row-13 floor, climbs the 287
+    // ramp, the 288 staircase, and the row-12 runway (feet 192) with every
+    // movement report passing validation. The old 262 bug (the vertical
+    // sampler burying the box under the ramp, reading every report as
+    // buried-in-geometry) is exercised here by the same rising motion.
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     const violations: string[] = [];
     let lastValid = { x: state.x, y: state.y };
@@ -1148,13 +1512,13 @@ describe("the real jungle map", () => {
   });
 
   test("walks up the jungle 287 ramp from the floor without tripping the anti-cheat", () => {
-    // The map's 287 at (7,12) (x 112..128) sits on the row-13 floor
+    // The fixture's 287 at (6,12) (x 96..112) sits on the row-13 floor
     // (y = 208) whose top is the ramp's flush base. Its face runs from the
-    // bottom-left corner (112, 208) to the right edge's midpoint (128, 200)
+    // bottom-left corner (96, 208) to the right edge's midpoint (112, 200)
     // — walking right from the floor must climb the ramp (the old
     // top-aligned model floated the foot 8px up, so the walker hit an
     // invisible face at the base) and every report must pass.
-    const grid = jungleGrid();
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     state.x = 7 * TILE_SIZE - 4; // on the floor just left of the foot
     state.y = 13 * TILE_SIZE - config.height / 2; // feet on the floor (208)
@@ -1195,14 +1559,14 @@ describe("the real jungle map", () => {
   });
 
   test("walks from the floor up the full 287+288 ramp without tripping the anti-cheat", () => {
-    // The map's 287 at (7,12) and its sibling 288 at (8,12) form the
+    // The fixture's 287 at (6,12) and its sibling 288 at (7,12) form the
     // continuous ramp the discovery notes promised as a follow-up: 287
     // lifts the walker from the row-13 floor (feet 208) to its apex (feet
     // 200), then 288's staircase continues to the top (feet 192 — the
     // cell's top edge). The 287→288 seam is 1px (287's apex at dy 8 vs
     // 288's left tread at dy 7), settled by the vertical pass; every
     // report must pass.
-    const grid = jungleGrid();
+    const grid = jungleFixtureGrid();
     const state = createPlayerState(config);
     state.x = 7 * TILE_SIZE - 4; // on the floor just left of the foot
     state.y = 13 * TILE_SIZE - config.height / 2; // feet on the floor (208)
@@ -1754,36 +2118,19 @@ describe("interaction tiles (315 → showquest)", () => {
     ).toBe(TILE_INTERACTION);
   });
 
-  test("the real map's tile 315 is under the feet of a player on its floor", () => {
-    // main.json has exactly one interaction gid: 315 at tile (17, 11), with
-    // a solid floor (row 12) directly beneath it — the signpost the player
-    // stands in front of.
-    const raw = JSON.parse(
-      readFileSync(
-        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
-        "utf8",
-      ),
-    ) as {
-      layers: Array<{
-        name: string;
-        width: number;
-        height: number;
-        data: number[] | string;
-      }>;
-    };
-    const layer1 = raw.layers.find((l) => l.name === "layer1");
-    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
-    const gids =
-      typeof layer1.data === "string"
-        ? layer1.data.split(",").map((v) => Number(v.trim()))
-        : layer1.data;
-    const grid = buildInteractionGrid({
-      width: layer1.width,
-      height: layer1.height,
-      gids,
-    });
+  test("a signpost tile is under the feet of a player on its floor", () => {
+    // Signpost-atop-floor fixture: 315 at tile (17, 11) perched on a solid
+    // row-12 floor — the signpost's base is flush with the standing floor's
+    // top, so the tile sits in the cell above the feet. Built here (not
+    // read from the shipped map) so a map edit can't move or remove it.
+    const width = 24;
+    const height = 13;
+    const gids = new Array<number>(width * height).fill(0);
+    gids[11 * width + 17] = TILE_INTERACTION;
+    for (let x = 13; x < width; x++) gids[12 * width + x] = TILE_SOLID;
+    const grid = buildInteractionGrid(layer(width, height, gids));
 
-    const idx = 11 * layer1.width + 17;
+    const idx = 11 * width + 17;
     expect(grid.gids[idx]).toBe(TILE_INTERACTION);
     expect([...grid.gids].filter((g) => g !== 0)).toEqual([TILE_INTERACTION]);
 
@@ -1987,31 +2334,14 @@ describe("door entities", () => {
     expect(state.grounded).toBe(true);
   });
 
-  test("the real map's door is one entity at (29, 8)", () => {
-    const raw = JSON.parse(
-      readFileSync(
-        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
-        "utf8",
-      ),
-    ) as {
-      layers: Array<{
-        name: string;
-        width: number;
-        height: number;
-        data: number[] | string;
-      }>;
-    };
-    const layer1 = raw.layers.find((l) => l.name === "layer1");
-    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
-    const gids =
-      typeof layer1.data === "string"
-        ? layer1.data.split(",").map((v) => Number(v.trim()))
-        : layer1.data;
-    const doors = buildDoorEntities({
-      width: layer1.width,
-      height: layer1.height,
-      gids,
-    });
+  test("a door block's identity key is its top-left cell", () => {
+    // A 2×2 door placed at (29, 8) — the position the shipped map's room1
+    // gate used — built here synthetically so a map edit can't move it:
+    // the block is still exactly one entity and its wire/schema key is
+    // "29,8".
+    const gids = new Array<number>(40 * 10).fill(0);
+    placeDoor(gids, 40, 29, 8);
+    const doors = buildDoorEntities(layer(40, 10, gids));
     expect(doors).toHaveLength(1);
     expect(doors[0]).toMatchObject({ tx: 29, ty: 8 });
     // Its identity key is the top-left cell, the schema/wire map key.
