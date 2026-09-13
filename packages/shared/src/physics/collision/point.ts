@@ -6,6 +6,7 @@
 
 import {
   TILE_DEAD_ZONE,
+  TILE_DOOR,
   TILE_SIZE,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -25,7 +26,7 @@ function pointInTileSolid(
 ): boolean {
   const kind = grid.kinds[ty * grid.width + tx] ?? 0;
   if (kind === 0) return false;
-  if (kind === TILE_SOLID) return true;
+  if (kind === TILE_SOLID || kind === TILE_DOOR) return true;
   const dx = x - tx * TILE_SIZE;
   const dy = y - ty * TILE_SIZE;
   if (kind === TILE_SLOPE_TL_BR) return dy <= dx;

@@ -13,6 +13,13 @@
  *                       (`INTERACTION_TILE_ACTIONS`), the `InteractionGrid`
  *                       + `buildInteractionGrid`, and the
  *                       `interactionTileUnderFeet` feet probe (E key)
+ * - `door.ts`        – door entities: the 2×2 door blocks (gids
+ *                       375/376/401/402) recognized as single open/closed
+ *                       door world objects (`buildDoorEntities`); a closed
+ *                       door is a solid, NON-sticky block — the grid folds
+ *                       their gids into the TILE_DOOR kind, which blocks
+ *                       walking but can't be grabbed (no wall cling)
+
  * - `collision/`      – point/AABB collision tests + penetration helpers +
  *                       the `wallBeside` wall-adjacency probe, split into
  *                       `masks.ts` (pixel masks), `geometry.ts`, `point.ts`,
@@ -51,12 +58,19 @@
  *         mouth and sinks to the base; touching it returns the player to
  *         its checkpoint (the web client probes its local simulation with
  *         `isBoxInDeadZone` and reuses the checkpoint message).
+ * - 375/376/401/402 – door tiles (a closed door): `buildTileGrid` folds
+ *         the four gids into the single TILE_DOOR kind — a full solid
+ *         block, so the player cannot walk through a closed door, but
+ *         NON-sticky: the wall-cling grab skips TILE_DOOR faces, so
+ *         jumping into one slides off instead of hanging (every door
+ *         starts closed; the entity model lives in door.ts).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */
 
 export * from "./tiles";
 export * from "./interaction";
+export * from "./door";
 export * from "./collision";
 export * from "./player";
 export * from "./validation";

@@ -68,7 +68,12 @@ penetration helpers + `wallBeside` wall-adjacency probe, split into
 `masks.ts` (the pixel masks for 288 stairs / 464 dead zone + the shared
 box-overlap / cell-walk / pixel-mask helpers `cellOverlapRect`,
 `forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
-`point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `player/` (the
+`point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `door.ts` (door
+entities: each non-overlapping 2×2 block of the door gids 375/376/401/402
+is one open/closed door world object via `buildDoorEntities` — a closed
+door is solid but non-sticky: `buildTileGrid` folds the gids into the
+`TILE_DOOR` kind, a full block that blocks walking yet can't be grabbed
+by the wall-cling), `player/` (the
 `stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
 state machine (grab/hang/wall-jump/release) — split into `config.ts`
 (config, spawn, speed ceiling), `state.ts`, `step.ts`), `validation.ts`
@@ -98,7 +103,9 @@ or Colyseus imports — so it can also be unit-tested directly.
   only in the interaction grid; standing on it and pressing E runs its
   action on the server), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
-  names from these so rendering and physics can't drift.
+  names from these so rendering and physics can't drift. The debug overlay
+  draws the block edges (green/blue), the slope lines (orange), the 464 pit
+  outline (red), and each door entity's purple 2×2 perimeter.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
   queries; `isBoxInDeadZone` for the dead-zone touch probe (the web client
   calls it every frame to gate the automatic checkpoint return on 464

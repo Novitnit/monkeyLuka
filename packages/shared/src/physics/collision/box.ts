@@ -6,6 +6,7 @@
 
 import {
   TILE_DEAD_ZONE,
+  TILE_DOOR,
   TILE_SIZE,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -39,7 +40,7 @@ export function aabbTouchesSolid(
   if (!cell) return false;
   const { ox0, ox1, oy0, oy1 } = cell;
 
-  if (kind === TILE_SOLID) return true;
+  if (kind === TILE_SOLID || kind === TILE_DOOR) return true;
   if (kind === TILE_SLOPE_TL_BR) {
     // Solid where dy ≤ dx: reachable iff the lowest dy is ≤ the highest dx.
     return oy0 <= ox1;
@@ -164,4 +165,49 @@ export function wallBeside(
   return forEachOverlappedCell(grid, cx, y, half, hh, (tx, ty) =>
     aabbTouchesSolid(grid, tx, ty, cx, y, half, hh),
   );
+}
+
+/**
+ * Like `wallBeside`, but a door (TILE_DOOR) vetoes the grab: a closed door
+ * is a smooth face, so the player cannot cling (grab) onto it — jumping
+ * into one slides off instead of hanging (the door is non-sticky). The
+ * grab check in stepPlayer uses this, so ordinary walls keep the
+ * wall-cling while doors don't. The hanging player can't *be* on a door
+ * to begin with (grabbing one is impossible), so the cling-release probe
+ * stays the plain `wallBeside`.
+ *
+ * The veto must cover the whole probe strip, not just the door cells
+ * themselves: the strip spans the box's full height, so beside the door's
+ * bottom row it also overlaps the wall the door sits on (their faces are
+ * flush — one continuous surface). Merely excluding the door cell from
+ * the "any solid" fold let that wall cell count, and the player grabbed
+ * the door's face right at the seam and hung there. Any door cell the
+ * strip touches therefore blocks the grab entirely; the wall beside a
+ * door only becomes grabable once the strip fully clears the door's edge.
+ */
+export function grabableWallBeside(
+  grid: SolidGrid,
+  x: number,
+  y: number,
+  hw: number,
+  hh: number,
+  dir: 1 | -1,
+): boolean {
+  const probe = 2;
+  const cx = dir > 0 ? x + hw + probe / 2 : x - hw - probe / 2;
+  const half = probe / 2;
+  let doorTouched = false;
+  let solid = false;
+  forEachOverlappedCell(grid, cx, y, half, hh, (tx, ty) => {
+    const kind = grid.kinds[ty * grid.width + tx] ?? 0;
+    if (kind === 0) return false;
+    const touches = aabbTouchesSolid(grid, tx, ty, cx, y, half, hh);
+    if (kind === TILE_DOOR) {
+      if (touches) doorTouched = true;
+    } else if (touches) {
+      solid = true;
+    }
+    return false;
+  });
+  return solid && !doorTouched;
 }

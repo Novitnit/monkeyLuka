@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   PLAYER_SPAWN,
+  TILE_DOOR,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -32,13 +33,17 @@ describe("jungle-map loader", () => {
     // Snapshot of the real map's layer1 (computed from main.json): 146
     // solid tiles (of which 3 are gid 65, folded into TILE_SOLID by
     // buildTileGrid) and 10 sloped kinds (4×110, 2×109, 2×287, 2×288 —
-    // the two 287+288 ramp pairs; the current map has no 262); the
-    // decoration gids (315, 375/376, 401/402, 464) must NOT become
-    // collision.
+    // the two 287+288 ramp pairs; the current map has no 262). The four
+    // door tiles (375/376/401/402) become their own TILE_DOOR kind — a
+    // closed door is solid but non-sticky (walls can be grabbed, doors
+    // can't) — so they count separately. The other decoration gids (315,
+    // 464) must NOT become collision.
     let solid = 0;
+    let doors = 0;
     let slopes = 0;
     for (const kind of grid.kinds) {
       if (kind === TILE_SOLID) solid += 1;
+      if (kind === TILE_DOOR) doors += 1;
       if (
         kind === TILE_SLOPE_TL_BR ||
         kind === TILE_SLOPE_TR_BL ||
@@ -50,6 +55,7 @@ describe("jungle-map loader", () => {
       }
     }
     expect(solid).toBe(146);
+    expect(doors).toBe(4);
     expect(slopes).toBe(10);
   });
 

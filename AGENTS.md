@@ -218,7 +218,29 @@ is a no-op. Actions resolve from the shared `INTERACTION_TILE_ACTIONS`
 registry (315 → `"showquest"`): `runInteraction` in
 `apps/server/src/rooms/jungle/interactions.ts` sends the player a random
 question from `Assets/question.json` with its choices **shuffled and
-unlabeled** — see the quest bullet below. The
+unlabeled** — see the quest bullet below. **Door entities**: the four gids 375/376/401/402 placed as a
+2×2 block (375,376 on top, 401,402 below) form one **door** Entity with
+two states (open/closed) — `buildDoorEntities` in
+`packages/shared/src/physics/door.ts` greedily recognizes each
+non-overlapping 2×2 block of door gids as a single door (default state
+`closed`). A closed door is **solid**: `buildTileGrid` folds the door
+gids into the single `TILE_DOOR` kind (a full block — the web client's
+local prediction and the server's report validation share that same
+grid), so the player cannot walk through it. Doors are also
+**non-sticky**: the wall-cling grab refuses any probe that touches a
+`TILE_DOOR` cell (`grabableWallBeside` in the shared collision code) —
+not just the door cell itself: the 2px grab strip spans the player's full
+height, so beside the door's bottom row it also overlaps the wall the
+door sits flush on, and the wall cell alone used to make the strip
+"grabable" (the player grabbed the door's face right at the seam and
+hung there). The veto covers the whole strip, so a door's side faces are
+smooth all the way to their edges and a player jumping into a closed
+ door slides off instead of hanging; the wall beside a door only becomes
+grabable once the strip fully clears the door's edge. The web debug overlay
+draws each
+door's own full 2×2 perimeter in **purple** — door edges
+never merge with or get hidden by other collision types, mirroring the
+464 pit outline. The
 Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /

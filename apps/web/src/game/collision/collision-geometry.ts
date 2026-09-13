@@ -42,6 +42,16 @@
  *         neighbor (other collision types are ignored, so the pit outline
  *         is self-contained and never hidden under a bordering wall/floor
  *         block's own edges).
+ * - 375/376/401/402 – door tiles: each recognized 2×2 door block (see
+ *         buildDoorEntities in @monkeyluka/shared) is emitted as its own
+ *         `kind: "door"` perimeter (the debug overlay draws it PURPLE) —
+ *         four sides around the whole 2×2 Entity. Like the 464 pit, the
+ *         outline is self-contained: other collision types are never
+ *         merged into it (a bordering 57 wall hides nothing). A closed
+ *         door IS solid in the physics grid (buildTileGrid folds the gids
+ *         into the TILE_DOOR kind), but it is NON-sticky — the wall-cling
+ *         grab can't grab it — and its debug identity stays its own purple
+ *         perimeter instead of wall/floor block edges.
  *
  * A 57 side touching a 109/110 tile emits no straight edge — the slope line
  * takes over that part of the block boundary, so the two belong to the same
@@ -58,6 +68,7 @@ import {
   TILE_SOLID,
   TILE_SOLID_65,
   TILE_STAIRS,
+  buildDoorEntities,
 } from "@monkeyluka/shared";
 import type { TiledMap } from "../map/tiled-map";
 
@@ -96,9 +107,10 @@ export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
  * "floor" = a horizontal boundary line (top or bottom of a group); "wall" =
  * a vertical boundary line (left or right side). Debug overlay colors
  * floors blue and walls green; "hazard" marks the dead-zone (464) pit
- * outline, drawn red.
+ * outline, drawn red; "door" marks a door Entity's own 2×2 perimeter,
+ * drawn purple — never merged with or covered by other collision types.
  */
-export type EdgeKind = "floor" | "wall" | "hazard";
+export type EdgeKind = "floor" | "wall" | "hazard" | "door";
 
 /** Which tile side a boundary edge lies on; the solid group is behind it. */
 export type TileSide = "top" | "bottom" | "left" | "right";
@@ -359,6 +371,25 @@ export function buildCollisionGeometry(
         }
       }
     }
+  }
+
+  // Door entities (see door.ts in @monkeyluka/shared): every recognized 2×2
+  // door block contributes its own full perimeter as `door` segments (the
+  // debug overlay draws them purple). Like the 464 hazard outline, a door
+  // face is covered only by the door itself — other collision types are
+  // deliberately NOT consulted, so a bordering 57 wall/floor never hides
+  // the outline: the outline is the Entity, not a block boundary.
+  for (const door of buildDoorEntities(layer)) {
+    const left = door.tx * tw;
+    const top = door.ty * th;
+    const right = left + door.cols * tw;
+    const bottom = top + door.rows * th;
+    shapeEdges.push(
+      { x1: left, y1: top, x2: right, y2: top, kind: "door", side: "top" },
+      { x1: right, y1: top, x2: right, y2: bottom, kind: "door", side: "right" },
+      { x1: left, y1: top, x2: left, y2: bottom, kind: "door", side: "left" },
+      { x1: left, y1: bottom, x2: right, y2: bottom, kind: "door", side: "bottom" },
+    );
   }
 
   const segments: BoundarySegment[] = [];

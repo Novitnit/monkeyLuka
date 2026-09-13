@@ -7,6 +7,7 @@
  */
 
 import {
+  grabableWallBeside,
   horizontalPenetration,
   verticalPenetration,
   wallBeside,
@@ -197,15 +198,18 @@ export function stepPlayer(
     // Wall grab: airborne, jump pressed (or still buffered), beside a wall
     // and moving into it. `result.hitWall` covers the step the wall stopped
     // the player (even without input); the input checks cover a player
-    // already resting flush against the wall. Reaching here skips the wall
-    // jump path — a grab consumes the press instead of launching.
+    // already resting flush against the wall. `grabableWallBeside` excludes
+    // doors (TILE_DOOR): a door is a smooth face, so jumping into a closed
+    // door slides off instead of hanging — the door is non-sticky, ordinary
+    // walls keep the cling. Reaching here skips the wall jump path — a grab
+    // consumes the press instead of launching.
     const grabDir: 0 | 1 | -1 =
       result.hitWall !== 0 &&
-      wallBeside(grid, state.x, state.y, hw, hh, result.hitWall as 1 | -1)
+      grabableWallBeside(grid, state.x, state.y, hw, hh, result.hitWall as 1 | -1)
         ? result.hitWall
-        : input.right && wallBeside(grid, state.x, state.y, hw, hh, 1)
+        : input.right && grabableWallBeside(grid, state.x, state.y, hw, hh, 1)
           ? 1
-          : input.left && wallBeside(grid, state.x, state.y, hw, hh, -1)
+          : input.left && grabableWallBeside(grid, state.x, state.y, hw, hh, -1)
             ? -1
             : 0;
     if (grabDir !== 0) {

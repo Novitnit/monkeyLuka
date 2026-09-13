@@ -53,6 +53,18 @@
  *         `buildInteractionGrid` (interaction.ts). Standing on one (the
  *         web probes its feet cell) and pressing E triggers the tile's
  *         action on the server — 315 is showquest.
+ * - 375/376/401/402 – door tiles: the four halves of a 2×2 door block,
+ *         placed as 375,376 on top and 401,402 below. A CLOSED door is a
+ *         solid block — `buildTileGrid` folds the gids into the single
+ *         TILE_DOOR kind (an extra full-block kind, like 65 folds to
+ *         TILE_SOLID), so the player cannot walk through a closed door —
+ *         but it is NOT grab-able: the wall-cling (grab) check skips
+ *         TILE_DOOR faces, so jumping against a door slides off instead
+ *         of hanging (a door is a smooth, non-sticky face). The same
+ *         layer feeds `buildDoorEntities` (door.ts), which recognizes
+ *         each non-overlapping 2×2 block as one door world object with an
+ *         open/closed state (doors start closed; toggling later must
+ *         rebuild the grid).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */
@@ -115,6 +127,25 @@ export const TILE_DEAD_ZONE = 464;
  * slope wedge.
  */
 export const TILE_INTERACTION = 315;
+/** Door tile, top-left half of the 2×2 door block (gids 375/376 on the top
+ * row). Door gids are solid: a closed door blocks the player, and
+ * `buildTileGrid` folds all four gids into the single TILE_DOOR kind (see
+ * FOLD_TO_DOOR). */
+export const TILE_DOOR_TOP_LEFT = 375;
+/** Door tile, top-right half of the 2×2 door block. */
+export const TILE_DOOR_TOP_RIGHT = 376;
+/** Door tile, bottom-left half of the 2×2 door block (gids 401/402 on the bottom row). */
+export const TILE_DOOR_BOTTOM_LEFT = 401;
+/** Door tile, bottom-right half of the 2×2 door block. */
+export const TILE_DOOR_BOTTOM_RIGHT = 402;
+/**
+ * The single solid kind standing for all four door gids: `buildTileGrid`
+ * folds 375/376/401/402 into it (like 65 folds into TILE_SOLID). Every
+ * collision query treats it as a full block (so a closed door blocks
+ * walking), but the wall-cling grab deliberately skips it — a door is a
+ * smooth face, so the player cannot get stuck on it (non-sticky).
+ */
+export const TILE_DOOR = TILE_DOOR_TOP_LEFT;
 /** Tiled layer name the collision geometry and physics read. */
 export const COLLISION_LAYER_NAME = "layer1";
 
@@ -133,6 +164,7 @@ export interface CollisionLayerData {
 export type TileKind =
   | 0
   | typeof TILE_SOLID
+  | typeof TILE_DOOR
   | typeof TILE_SLOPE_TL_BR
   | typeof TILE_SLOPE_TR_BL
   | typeof TILE_SLOPE_BR
@@ -148,24 +180,45 @@ export interface SolidGrid {
   kinds: Uint16Array;
 }
 
-/** Build the collision grid from a tile layer (ignores non-solid gids). */
+/**
+ * Extra gids with exactly the full-block footprint of `TILE_SOLID`:
+ * `buildTileGrid` folds them into TILE_SOLID so the physics sees one solid
+ * kind (the penetration code treats every non-57 kind as a slope). 65 is a
+ * plain brick block with the same shape as 57.
+ */
+const FOLD_TO_SOLID = new Set<number>([TILE_SOLID_65]);
+
+/**
+ * The four door gids, all folding to the single TILE_DOOR kind: a closed
+ * door is a full solid block the player cannot walk through, but a smooth
+ * non-sticky face the wall-cling grab skips (see the grab check in
+ * box.ts/step.ts).
+ */
+const FOLD_TO_DOOR = new Set<number>([
+  TILE_DOOR_TOP_LEFT,
+  TILE_DOOR_TOP_RIGHT,
+  TILE_DOOR_BOTTOM_LEFT,
+  TILE_DOOR_BOTTOM_RIGHT,
+]);
+
+/** Build the collision grid from a tile layer (non-solid gids become 0). */
 export function buildTileGrid(layer: CollisionLayerData): SolidGrid {
   const kinds = new Uint16Array(layer.width * layer.height);
   for (let i = 0; i < layer.width * layer.height; i++) {
     const gid = layer.gids[i] ?? 0;
-    kinds[i] =
-      gid === TILE_SOLID ||
-      gid === TILE_SOLID_65 || // same shape as 57 — folded to TILE_SOLID below
-      gid === TILE_SLOPE_TL_BR ||
-      gid === TILE_SLOPE_TR_BL ||
-      gid === TILE_SLOPE_BR ||
-      gid === TILE_SLOPE_SHALLOW ||
-      gid === TILE_STAIRS ||
-      gid === TILE_DEAD_ZONE
-        ? gid === TILE_SOLID_65
-          ? TILE_SOLID
-          : gid
-        : 0;
+    kinds[i] = FOLD_TO_SOLID.has(gid)
+      ? TILE_SOLID
+      : FOLD_TO_DOOR.has(gid)
+        ? TILE_DOOR
+        : gid === TILE_SLOPE_TL_BR ||
+          gid === TILE_SLOPE_TR_BL ||
+          gid === TILE_SLOPE_BR ||
+          gid === TILE_SLOPE_SHALLOW ||
+          gid === TILE_STAIRS ||
+          gid === TILE_DEAD_ZONE ||
+          gid === TILE_SOLID
+          ? gid
+          : 0;
   }
   return { width: layer.width, height: layer.height, kinds };
 }

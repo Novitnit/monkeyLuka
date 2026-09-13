@@ -8,6 +8,7 @@
 
 import {
   TILE_DEAD_ZONE,
+  TILE_DOOR,
   TILE_SIZE,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
@@ -66,7 +67,7 @@ export function horizontalPenetration(
     if (!cell) return false;
     const { left, top } = cell;
 
-    if (kind === TILE_SOLID) {
+    if (kind === TILE_SOLID || kind === TILE_DOOR) {
       const pen = dir > 0 ? x + hw - left : left + TILE_SIZE - (x - hw);
       if (pen > maxPen) maxPen = pen;
       return false;
@@ -206,7 +207,7 @@ export function verticalPenetration(
     if (!cell) return false;
     const { left, top } = cell;
 
-    if (kind === TILE_SOLID) {
+    if (kind === TILE_SOLID || kind === TILE_DOOR) {
       const pen = dir > 0 ? y + hh - top : top + TILE_SIZE - (y - hh);
       if (pen > maxPen) maxPen = pen;
       return false;

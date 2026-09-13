@@ -10,25 +10,34 @@ import { join } from "node:path";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
+  DOOR_TILE_GIDS,
   INTERACTION_TILE_ACTIONS,
   PLAYER_SPAWN,
+  TILE_DOOR_BOTTOM_LEFT,
+  TILE_DOOR_BOTTOM_RIGHT,
+  TILE_DOOR_TOP_LEFT,
+  TILE_DOOR_TOP_RIGHT,
   TILE_INTERACTION,
   TILE_SIZE,
   TILE_DEAD_ZONE,
+  TILE_DOOR,
   TILE_SLOPE_BR,
   TILE_SLOPE_SHALLOW,
   TILE_SLOPE_TL_BR,
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
   createPlayerState,
   gridPixelSize,
+  grabableWallBeside,
   interactionActionForGid,
   interactionTileUnderFeet,
   isBoxInDeadZone,
   isBoxSolid,
+  isDoorTileGid,
   isInteractionTileGid,
   isPointSolid,
   maxPlayerSpeed,
@@ -1735,5 +1744,222 @@ describe("interaction tiles (315 → showquest)", () => {
         config.height,
       ),
     ).toBe(TILE_INTERACTION);
+  });
+});
+
+describe("door entities", () => {
+  const door = [
+    TILE_DOOR_TOP_LEFT,
+    TILE_DOOR_TOP_RIGHT,
+    TILE_DOOR_BOTTOM_LEFT,
+    TILE_DOOR_BOTTOM_RIGHT,
+  ];
+
+  /** Places a 2×2 door block with its top-left corner at (tx, ty). */
+  const placeDoor = (
+    gids: number[],
+    width: number,
+    tx: number,
+    ty: number,
+  ): void => {
+    gids[ty * width + tx] = TILE_DOOR_TOP_LEFT;
+    gids[ty * width + tx + 1] = TILE_DOOR_TOP_RIGHT;
+    gids[(ty + 1) * width + tx] = TILE_DOOR_BOTTOM_LEFT;
+    gids[(ty + 1) * width + tx + 1] = TILE_DOOR_BOTTOM_RIGHT;
+  };
+
+  test("recognizes a 2×2 block of the four gids as one door", () => {
+    // Canonical placement: 375,376 / 401,402 with the top-left at (2, 3)
+    // in an 8×8 layer.
+    const gids = new Array<number>(8 * 8).fill(0);
+    placeDoor(gids, 8, 2, 3);
+    const doors = buildDoorEntities(layer(8, 8, gids));
+    expect(doors).toHaveLength(1);
+    expect(doors[0]).toMatchObject({
+      tx: 2,
+      ty: 3,
+      cols: 2,
+      rows: 2,
+      state: "closed",
+    });
+    // A door glyph is exactly the four door gids.
+    expect(DOOR_TILE_GIDS).toEqual(door);
+    expect(door.every(isDoorTileGid)).toBe(true);
+    expect(isDoorTileGid(TILE_SOLID)).toBe(false);
+  });
+
+  test("ignores non-door gids and partial blocks", () => {
+    // Two half-doors (one column each) plus a stray top half with a solid
+    // under it: none form a full 2×2 door.
+    const gids = new Array<number>(8 * 8).fill(0);
+    gids[10] = TILE_SOLID;
+    gids[3 * 8 + 5] = TILE_DOOR_TOP_LEFT;
+    gids[3 * 8 + 6] = TILE_DOOR_TOP_RIGHT;
+    gids[4 * 8 + 7] = TILE_DOOR_BOTTOM_LEFT;
+    expect(buildDoorEntities(layer(8, 8, gids))).toHaveLength(0);
+  });
+
+  test("flush-adjacent doors are separate entities", () => {
+    // Two doors sharing an edge: (1,2) and (3,2) — the greedy 2×2 scan
+    // claims each 2×2 once instead of re-reading overlapping windows.
+    const gids = new Array<number>(8 * 8).fill(0);
+    placeDoor(gids, 8, 1, 2);
+    placeDoor(gids, 8, 3, 2);
+    placeDoor(gids, 8, 2, 5);
+    const doors = buildDoorEntities(layer(8, 8, gids));
+    expect(doors).toHaveLength(3);
+    expect(doors.map((d) => [d.tx, d.ty])).toEqual([
+      [1, 2],
+      [3, 2],
+      [2, 5],
+    ]);
+  });
+
+  test("closed doors fold into the TILE_DOOR kind (solid, non-sticky)", () => {
+    // A closed door is its own solid kind: the four door gids land in the
+    // grid as TILE_DOOR — a full block (box queries read it as solid, so
+    // the player can't walk through), but distinct from TILE_SOLID so the
+    // wall-cling grab can skip it.
+    const grid = buildTileGrid(layer(8, 4, [
+      TILE_DOOR_TOP_LEFT, TILE_DOOR_TOP_RIGHT, 0, 0, 0, 0, 0, 0,
+      TILE_DOOR_BOTTOM_LEFT, TILE_DOOR_BOTTOM_RIGHT, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+    ]));
+    expect([...grid.kinds].filter((k) => k !== 0)).toEqual([
+      TILE_DOOR, TILE_DOOR, TILE_DOOR, TILE_DOOR,
+    ]);
+    // The door still reads as solid for box/point queries (blocks walking;
+    // a box overlapping the block at (0,0)-(1,1) is solid).
+    expect(isBoxSolid(grid, 16, 16, config.width, config.height)).toBe(true);
+  });
+
+  test("a player cannot cling to (grab) a closed door", () => {
+    // A tall DOOR column at tile x=4 (rows 0..8) + a full floor at row 9 —
+    // the mirror of the wall-cling setup, but made of TILE_DOOR. Airborne,
+    // flush against the face, moving into it with jump held: the grab must
+    // NOT fire — the player slides down the face and lands (non-sticky),
+    // instead of hanging frozen in the air.
+    const gids = new Array<number>(8 * 10).fill(0);
+    for (let y = 0; y < 9; y++) gids[y * 8 + 4] = TILE_DOOR;
+    for (let x = 0; x < 8; x++) gids[9 * 8 + x] = TILE_SOLID;
+    const grid = buildTileGrid(layer(8, 10, gids));
+
+    const state = createPlayerState(config);
+    state.x = 4 * TILE_SIZE - config.width / 2; // right edge flush at 64
+    state.y = 3 * TILE_SIZE; // row 3, well above the floor
+    for (let i = 0; i < 120; i++) {
+      // Jump only during the initial grab window (and never on the ground,
+      // so a landed player rests instead of quick-bouncing).
+      const jump = state.grounded ? false : i < 10;
+      stepPlayer(
+        state,
+        { left: false, right: true, jump },
+        grid,
+        STEP,
+        config,
+      );
+      if (state.clinging) break;
+    }
+    expect(state.clinging).toBe(false);
+    // The player fell down the face to the floor instead of hanging.
+    expect(state.y).toBeGreaterThan(3 * TILE_SIZE);
+    expect(state.grounded).toBe(true);
+  });
+
+  test("a player cannot cling to a closed door's face where it continues onto a wall", () => {
+    // The real map's door (2×2 block) sits flush on top of a solid wall
+    // column, so the door's side faces and the wall's face are one
+    // continuous surface. The grab probe is a 2px strip at the box's side
+    // edge spanning the box's full height: beside the door's bottom row it
+    // overlaps BOTH the door cell AND the wall cell below it. The door must
+    // veto the whole grab — the old "skip door cells" fold let the wall
+    // cell count, and the player grabbed the door's face right at the seam
+    // and hung there.
+    const gids = new Array<number>(8 * 13).fill(0);
+    placeDoor(gids, 8, 4, 8);
+    for (let y = 10; y < 13; y++) {
+      gids[y * 8 + 4] = TILE_SOLID;
+      gids[y * 8 + 5] = TILE_SOLID;
+    }
+    const grid = buildTileGrid(layer(8, 13, gids));
+    const hw = config.width / 2;
+    const hh = config.height / 2;
+    const x = 4 * TILE_SIZE - config.width / 2; // flush beside the left face
+
+    // Probe-level: while the strip still touches the door (the seam band
+    // rows 9-10, and even a 2px graze of the door's bottom edge) the face
+    // is not grabable; only once the strip fully clears the door's bottom
+    // (y ≥ 10·16) is the wall below the door a normal grabable wall.
+    expect(grabableWallBeside(grid, x, 156, hw, hh, 1)).toBe(false);
+    expect(grabableWallBeside(grid, x, 165, hw, hh, 1)).toBe(false);
+    expect(grabableWallBeside(grid, x, 10 * TILE_SIZE + 7, hw, hh, 1)).toBe(true);
+
+    // Integration: falling down the door's face holding right+jump never
+    // grabs while any part of the probe touches the door; the player slides
+    // down the smooth face and the first grab can only happen once the box
+    // has fully cleared the door's bottom edge (on the wall below).
+    const state = createPlayerState(config);
+    state.x = x;
+    state.y = 156;
+    const doorBottom = 10 * TILE_SIZE;
+    let grabbedBesideDoor = false;
+    let grabbedBelow = false;
+    for (let i = 0; i < 300 && !grabbedBelow; i++) {
+      stepPlayer(state, { left: false, right: true, jump: true }, grid, STEP, config);
+      if (state.clinging) {
+        if (state.y - hh < doorBottom) grabbedBesideDoor = true;
+        else grabbedBelow = true;
+      }
+    }
+    expect(grabbedBesideDoor).toBe(false);
+    expect(grabbedBelow).toBe(true);
+  });
+
+  test("a player cannot walk through a closed door", () => {
+    // Door block (2×2 of door gids) at rows 1-2, cols 2-3 — the player
+    // walks right into its face and must stop, exactly like a wall
+    // (door left face at x=2*16; collider half-width 5 → center stops at
+    // 32-5=27).
+    const gids = new Array<number>(8 * 4).fill(0);
+    placeDoor(gids, 8, 2, 1);
+    for (let x = 0; x < 8; x++) gids[3 * 8 + x] = TILE_SOLID; // floor beneath
+    const grid = buildTileGrid(layer(8, 4, gids));
+
+    const state = settle(grid, 1 * TILE_SIZE, 3 * TILE_SIZE);
+    const input: PlayerInput = { left: false, right: true, jump: false };
+    for (let i = 0; i < 120; i++) stepPlayer(state, input, grid, STEP, config);
+    expect(state.x).toBeCloseTo(2 * TILE_SIZE - config.width / 2, 4);
+    expect(state.vx).toBe(0);
+    expect(state.grounded).toBe(true);
+  });
+
+  test("the real map's door is one entity at (29, 8)", () => {
+    const raw = JSON.parse(
+      readFileSync(
+        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
+        "utf8",
+      ),
+    ) as {
+      layers: Array<{
+        name: string;
+        width: number;
+        height: number;
+        data: number[] | string;
+      }>;
+    };
+    const layer1 = raw.layers.find((l) => l.name === "layer1");
+    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
+    const gids =
+      typeof layer1.data === "string"
+        ? layer1.data.split(",").map((v) => Number(v.trim()))
+        : layer1.data;
+    const doors = buildDoorEntities({
+      width: layer1.width,
+      height: layer1.height,
+      gids,
+    });
+    expect(doors).toHaveLength(1);
+    expect(doors[0]).toMatchObject({ tx: 29, ty: 8 });
   });
 });

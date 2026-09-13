@@ -8,8 +8,10 @@
  *                      slope tolerance constants
  * - `point.ts`       – the exact point test (`isPointSolid`)
  * - `box.ts`         – exact AABB-vs-tile tests (`isBoxSolid`,
- *                      `isBoxInDeadZone`, `wallBeside`) + the internal
- *                      per-cell tests they share with `penetration.ts`
+ *                      `isBoxInDeadZone`, `wallBeside`, and
+ *                      `grabableWallBeside` — the wall-cling probe that
+ *                      skips non-sticky doors) + the internal per-cell
+ *                      tests they share with `penetration.ts`
  * - `support.ts`     – `slopeSupportsBox` ride-vs-wall slope contact logic
  * - `penetration.ts` – `horizontalPenetration` / `verticalPenetration`
  *
@@ -19,5 +21,10 @@
  */
 
 export { isPointSolid } from "./point";
-export { isBoxSolid, isBoxInDeadZone, wallBeside } from "./box";
+export {
+  isBoxSolid,
+  isBoxInDeadZone,
+  wallBeside,
+  grabableWallBeside,
+} from "./box";
 export { horizontalPenetration, verticalPenetration } from "./penetration";
