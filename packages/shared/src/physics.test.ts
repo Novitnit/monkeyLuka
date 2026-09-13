@@ -10,7 +10,9 @@ import { join } from "node:path";
 import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
+  INTERACTION_TILE_ACTIONS,
   PLAYER_SPAWN,
+  TILE_INTERACTION,
   TILE_SIZE,
   TILE_DEAD_ZONE,
   TILE_SLOPE_BR,
@@ -19,11 +21,15 @@ import {
   TILE_SLOPE_TR_BL,
   TILE_SOLID,
   TILE_STAIRS,
+  buildInteractionGrid,
   buildTileGrid,
   createPlayerState,
   gridPixelSize,
+  interactionActionForGid,
+  interactionTileUnderFeet,
   isBoxInDeadZone,
   isBoxSolid,
+  isInteractionTileGid,
   isPointSolid,
   maxPlayerSpeed,
   stepPlayer,
@@ -1604,5 +1610,130 @@ describe("anti-cheat validation", () => {
     const oneFrame = maxPlayerSpeed(config) / 60;
     expect(ANTI_CHEAT.maxPositionError).toBeGreaterThan(oneFrame);
     expect(ANTI_CHEAT.maxPositionError).toBeLessThan(TILE_SIZE * 10);
+  });
+});
+
+describe("interaction tiles (315 → showquest)", () => {
+  test("the registry binds tile 315 to showquest", () => {
+    expect(INTERACTION_TILE_ACTIONS[TILE_INTERACTION]).toBe("showquest");
+    expect(interactionActionForGid(TILE_INTERACTION)).toBe("showquest");
+    expect(interactionActionForGid(TILE_SOLID)).toBeUndefined();
+    expect(isInteractionTileGid(TILE_INTERACTION)).toBe(true);
+    expect(isInteractionTileGid(57)).toBe(false);
+  });
+
+  test("buildInteractionGrid keeps only registered interaction gids", () => {
+    const grid = buildInteractionGrid(
+      layer(8, 1, [0, TILE_SOLID, TILE_INTERACTION, 65, TILE_DEAD_ZONE]),
+    );
+    expect(grid.gids[0]).toBe(0);
+    expect(grid.gids[1]).toBe(0); // 57 is collision, not interaction
+    expect(grid.gids[2]).toBe(TILE_INTERACTION);
+    expect(grid.gids[3]).toBe(0);
+    expect(grid.gids[4]).toBe(0);
+  });
+
+  test("interaction gids never leak into the collision grid", () => {
+    // buildTileGrid is the collision source of truth: 315 must stay a 0
+    // there, or the penetration fallthrough would turn it into a slope.
+    const grid = buildTileGrid(
+      layer(4, 1, [TILE_INTERACTION, 57, 65, TILE_DEAD_ZONE]),
+    );
+    expect(grid.kinds[0]).toBe(0);
+    expect(grid.kinds[1]).toBe(TILE_SOLID);
+    expect(grid.kinds[2]).toBe(TILE_SOLID);
+    expect(grid.kinds[3]).toBe(TILE_DEAD_ZONE);
+  });
+
+  test("feet flush at the boundary of a floor trigger the tile perched above", () => {
+    // The real-map placement: 315 sits directly ABOVE the floor cell the
+    // player stands on, so a resting player's feet are exactly on the
+    // boundary between the two cells. 315 at (2,3), solid floor at row 4.
+    const gids = new Array<number>(8 * 8).fill(0);
+    gids[3 * 8 + 2] = TILE_INTERACTION;
+    for (let x = 0; x < 8; x++) gids[4 * 8 + x] = TILE_SOLID;
+    const grid = buildInteractionGrid(layer(8, 8, gids));
+
+    // Feet exactly on the floor top (boundary between row 3 and row 4).
+    const feet = 4 * TILE_SIZE;
+    expect(interactionTileUnderFeet(grid, 2 * 16 + 8, feet - config.height / 2, config.height)).
+      toBe(TILE_INTERACTION);
+    // A 1px-sunk foot (slope support settlement) still reads it.
+    expect(interactionTileUnderFeet(grid, 2 * 16 + 8, feet - config.height / 2 + 1, config.height)).
+      toBe(TILE_INTERACTION);
+    // Outside the tile's horizontal span → nothing.
+    expect(interactionTileUnderFeet(grid, 4 * 16 + 8, feet - config.height / 2, config.height)).
+      toBe(0);
+  });
+
+  test("standing ON an interaction tile (tile as floor) triggers via the feet cell", () => {
+    // 315 IS the floor tile: feet rest on its top edge, so the feet cell
+    // itself is the interaction cell (primary probe, no boundary-above).
+    const gids = new Array<number>(8 * 8).fill(0);
+    gids[3 * 8 + 2] = TILE_INTERACTION;
+    for (let x = 0; x < 8; x++) gids[4 * 8 + x] = TILE_SOLID; // ground under it
+    const grid = buildInteractionGrid(layer(8, 8, gids));
+
+    const feet = 3 * TILE_SIZE; // standing ON the tile's top edge
+    expect(interactionTileUnderFeet(grid, 2 * 16 + 8, feet - config.height / 2, config.height)).
+      toBe(TILE_INTERACTION);
+  });
+
+  test("feet two cells below an interaction tile do not trigger it", () => {
+    // 315 at row 2, floor at row 4: the player on the far floor has its feet
+    // at the row-4 boundary; the cell above is empty, so no trigger.
+    const gids = new Array<number>(8 * 8).fill(0);
+    gids[2 * 8 + 1] = TILE_INTERACTION;
+    for (let x = 0; x < 8; x++) gids[4 * 8 + x] = TILE_SOLID;
+    const grid = buildInteractionGrid(layer(8, 8, gids));
+
+    const feet = 4 * TILE_SIZE;
+    expect(interactionTileUnderFeet(grid, 1 * 16 + 8, feet - config.height / 2, config.height)).
+      toBe(0);
+  });
+
+  test("the real map's tile 315 is under the feet of a player on its floor", () => {
+    // main.json has exactly one interaction gid: 315 at tile (17, 11), with
+    // a solid floor (row 12) directly beneath it — the signpost the player
+    // stands in front of.
+    const raw = JSON.parse(
+      readFileSync(
+        join(import.meta.dir, "..", "..", "..", "Assets", "map", "main.json"),
+        "utf8",
+      ),
+    ) as {
+      layers: Array<{
+        name: string;
+        width: number;
+        height: number;
+        data: number[] | string;
+      }>;
+    };
+    const layer1 = raw.layers.find((l) => l.name === "layer1");
+    if (!layer1) throw new Error("Assets/map/main.json is missing layer1");
+    const gids =
+      typeof layer1.data === "string"
+        ? layer1.data.split(",").map((v) => Number(v.trim()))
+        : layer1.data;
+    const grid = buildInteractionGrid({
+      width: layer1.width,
+      height: layer1.height,
+      gids,
+    });
+
+    const idx = 11 * layer1.width + 17;
+    expect(grid.gids[idx]).toBe(TILE_INTERACTION);
+    expect([...grid.gids].filter((g) => g !== 0)).toEqual([TILE_INTERACTION]);
+
+    // A player at rest on the floor beneath it (feet flush at 12*16).
+    const feet = 12 * TILE_SIZE;
+    expect(
+      interactionTileUnderFeet(
+        grid,
+        17 * 16 + 8,
+        feet - config.height / 2,
+        config.height,
+      ),
+    ).toBe(TILE_INTERACTION);
   });
 });

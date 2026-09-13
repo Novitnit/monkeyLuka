@@ -159,6 +159,16 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   (`checkpointPending`): the broadcast is ~one RTT stale and snapping to it
   would undo the teleport and read as a teleport+speed violation — see
   `discoveries/checkpoint-return-race-stale-snapshot-teleport-violations.md`.
+  **E (edge-triggered `keyE`, grounded only) triggers interaction tiles**:
+  `scene/update.ts` probes the local simulated position with the shared
+  `interactionTileUnderFeet` (the feet cell, plus the cell just above when
+  the feet sit at/within 2px of a cell boundary — the 315 signpost's base
+  is flush with the standing floor's top, i.e. the cell above the feet)
+  against the `InteractionGrid` built from the same `layer1` the collision
+  grid reads, and sends `PLAYER_INTERACTION_MESSAGE` with the found gid.
+  The sent `gid` is advisory only: the room re-probes its own last accepted
+  position with the same rule before running the action, so a stale/forged
+  press is a no-op. 315 → "showquest" (currently just a server-side log).
 
 - **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's
   `reconnectionToken` + name in **sessionStorage** (survives reloads, not tab

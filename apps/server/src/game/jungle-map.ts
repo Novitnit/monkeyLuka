@@ -7,9 +7,11 @@
  */
 
 import {
+  buildInteractionGrid,
   buildTileGrid,
   COLLISION_LAYER_NAME,
   TILE_SIZE,
+  type InteractionGrid,
   type SolidGrid,
 } from "@monkeyluka/shared";
 
@@ -30,6 +32,8 @@ interface RawTiledMap {
 
 export interface JungleMapData {
   grid: SolidGrid;
+  /** Interaction tiles (gid → action registry) built from the same layer. */
+  interactions: InteractionGrid;
   /** World size in pixels (matches the web's map model). */
   width: number;
   height: number;
@@ -73,7 +77,13 @@ export function parseJungleMap(raw: RawTiledMap): JungleMapData {
   }
 
   const grid = buildTileGrid({ width, height, gids });
-  return { grid, width: grid.width * TILE_SIZE, height: grid.height * TILE_SIZE };
+  const interactions = buildInteractionGrid({ width, height, gids });
+  return {
+    grid,
+    interactions,
+    width: grid.width * TILE_SIZE,
+    height: grid.height * TILE_SIZE,
+  };
 }
 
 /** Reads and parses the jungle map JSON from disk. */

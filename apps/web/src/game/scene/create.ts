@@ -10,7 +10,11 @@
  */
 
 import type Phaser from "phaser";
-import { COLLISION_LAYER_NAME, buildTileGrid } from "@monkeyluka/shared";
+import {
+  COLLISION_LAYER_NAME,
+  buildInteractionGrid,
+  buildTileGrid,
+} from "@monkeyluka/shared";
 import {
   ROOM_HEIGHT,
   ROOM_WIDTH,
@@ -110,6 +114,11 @@ export function createSceneCreate(
             );
           }
           const grid = buildTileGrid(layer);
+          // Interaction tiles live in a separate grid from the same layer:
+          // they are NOT collision geometry, so they never enter `grid`
+          // (buildTileGrid folds non-solid gids to 0) — only the feet
+          // probe (E key, update.ts) reads this one.
+          const interactions = buildInteractionGrid(layer);
 
           // Player sprites get their own layer instead of living inside
           // `rooms[0]`: a container renders as one unit at its display-list
@@ -153,6 +162,7 @@ export function createSceneCreate(
 
           // Commit everything the update loop reads next frame.
           state.grid = grid;
+          state.interactions = interactions;
           state.rooms = render.rooms;
           state.roomColumns = render.columns;
           state.roomRows = render.rows;
@@ -168,6 +178,10 @@ export function createSceneCreate(
             keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.D) ?? null;
           state.keyW =
             keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.W) ?? null;
+          // E: interaction tiles (see update.ts). Gameplay key — not
+          // debug-gated like R.
+          state.keyE =
+            keyboard?.addKey(phaser.Input.Keyboard.KeyCodes.E) ?? null;
           // Debug only: R returns to the checkpoint. The room always
           // accepts the checkpoint message (its target is the
           // server-chosen spawn, so it can't bypass the anti-cheat) and

@@ -6,7 +6,7 @@
  */
 
 import type Phaser from "phaser";
-import type { SolidGrid } from "@monkeyluka/shared";
+import type { InteractionGrid, SolidGrid } from "@monkeyluka/shared";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
 
@@ -14,6 +14,12 @@ import type { RemotePlayerView } from "../player/remote-players";
 export interface JungleSceneState {
   player: Player | null;
   grid: SolidGrid | null;
+  /**
+   * Interaction tiles (gid → action registry) from the same `layer1` the
+   * collision grid reads; probed with `interactionTileUnderFeet` on the E
+   * key (see update.ts).
+   */
+  interactions: InteractionGrid | null;
   /**
    * Container holding the player sprites (local + remote): a transform twin
    * of `rooms[0]` added after every room, so players draw on top of the
@@ -28,6 +34,8 @@ export interface JungleSceneState {
   keyA: Phaser.Input.Keyboard.Key | null;
   keyD: Phaser.Input.Keyboard.Key | null;
   keyW: Phaser.Input.Keyboard.Key | null;
+  /** E: trigger the interaction tile under the feet (see update.ts). */
+  keyE: Phaser.Input.Keyboard.Key | null;
   /** Debug only (isDebugEnabled): R teleports back here. */
   checkpoint: { x: number; y: number };
   keyR: Phaser.Input.Keyboard.Key | null;
@@ -49,6 +57,7 @@ export function createJungleSceneState(): JungleSceneState {
   return {
     player: null,
     grid: null,
+    interactions: null,
     playerLayer: null,
     rooms: null,
     roomColumns: 1,
@@ -57,6 +66,7 @@ export function createJungleSceneState(): JungleSceneState {
     keyA: null,
     keyD: null,
     keyW: null,
+    keyE: null,
     checkpoint: { x: PLAYER_SPAWN.x, y: PLAYER_SPAWN.y },
     keyR: null,
     checkpointPending: false,

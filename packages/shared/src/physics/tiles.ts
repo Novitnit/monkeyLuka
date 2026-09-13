@@ -47,6 +47,12 @@
  *         is the collision shape (see DEAD_ZONE_MASK in collision/masks.ts);
  *         touching it returns the player to its checkpoint (the web client
  *         probes its local simulation with isBoxInDeadZone).
+ * - 315 – interaction tile: NOT a solid kind — `buildTileGrid` ignores it
+ *         (folded to 0, so the penetration code can never treat it as a
+ *         slope) and it lives in the separate interaction grid built by
+ *         `buildInteractionGrid` (interaction.ts). Standing on one (the
+ *         web probes its feet cell) and pressing E triggers the tile's
+ *         action on the server — 315 is showquest.
  * An AABB "touches" a slope when its extreme corner crosses into the solid
  * half, which gives exact rect-vs-triangle tests (see collision.ts).
  */
@@ -99,6 +105,16 @@ export const TILE_STAIRS = 288;
  * 262-shaped wedge instead of the basin.
  */
 export const TILE_DEAD_ZONE = 464;
+/**
+ * First interaction tile: standing on one (see `interactionTileUnderFeet`
+ * in interaction.ts) and pressing E sends `PLAYER_INTERACTION_MESSAGE` to
+ * the server, which resolves its action from `INTERACTION_TILE_ACTIONS`
+ * (315 → "showquest", logged server-side). The gid must stay OUT of
+ * `TileKind` and `buildTileGrid`: interaction tiles are not collision
+ * geometry, and the penetration fallthrough would turn a new kind into a
+ * slope wedge.
+ */
+export const TILE_INTERACTION = 315;
 /** Tiled layer name the collision geometry and physics read. */
 export const COLLISION_LAYER_NAME = "layer1";
 

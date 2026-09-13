@@ -9,6 +9,10 @@
  * are re-exported here so existing consumers (`@monkeyluka/shared`,
  * `./physics`) keep working unchanged:
  * - `tiles.ts`        – tile constants, layer → `SolidGrid`, world bounds
+ * - `interaction.ts`  – interaction tiles: the gid → action registry
+ *                       (`INTERACTION_TILE_ACTIONS`), the `InteractionGrid`
+ *                       + `buildInteractionGrid`, and the
+ *                       `interactionTileUnderFeet` feet probe (E key)
  * - `collision/`      – point/AABB collision tests + penetration helpers +
  *                       the `wallBeside` wall-adjacency probe, split into
  *                       `masks.ts` (pixel masks), `geometry.ts`, `point.ts`,
@@ -52,6 +56,7 @@
  */
 
 export * from "./tiles";
+export * from "./interaction";
 export * from "./collision";
 export * from "./player";
 export * from "./validation";

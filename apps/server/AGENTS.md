@@ -71,8 +71,9 @@ shared physics and reports the result. The room does **no simulation** — it
 only validates each report and relays it:
 
 1. `onCreate` loads the collision map (`src/game/jungle-map.ts`, reading the
-   same `Assets/map/main.json` via four levels up from this file, override with
-   `JUNGLE_MAP_PATH`) and registers the `PLAYER_INPUT_MESSAGE` handler. There is
+   same `Assets/map/main.json` via four levels up from this file, override
+   with `JUNGLE_MAP_PATH` — it now also builds the `InteractionGrid` from the
+   same layer) and registers the `PLAYER_INPUT_MESSAGE` + `PLAYER_INTERACTION_MESSAGE` handlers. There is
    no `setFixedTimestep` and no simulation loop.
 2. `onPlayerInput` sanitizes the payload shape (finite position/velocity/
    grounded/clinging/facing), applies a **flood rate limit**
@@ -139,6 +140,30 @@ handler** is fatal to that client — `RoomMessages.#noHandler` calls
 `client.leave(CloseCode.WITH_ERROR)` in non-dev mode (dev mode only sends an
 error). Never let a client send a message type the room may not have
 registered.
+
+### Interaction tiles (E key)
+
+`onCreate` also registers `PLAYER_INTERACTION_MESSAGE`, whose
+`onPlayerInteraction` runs the interaction the web client triggers with E:
+
+1. `sanitizePlayerInteraction` strict-checks the payload — `gid` must be a
+   finite number that is a **registered interaction gid** (`isInteractionTileGid`,
+   from the shared `INTERACTION_TILE_ACTIONS` registry; 315 is the first, bound
+   to `"showquest"`).
+2. The wire `gid` alone is never trusted: the room re-probes its OWN last
+   accepted position (`server-player.ts`'s `lastValid`, the same state the
+   schema broadcasts) with the shared `interactionTileUnderFeet` rule and
+   requires it to report the same gid — plus `lastValid.grounded` (standing,
+   not jumping through). A forged message can only fire an interaction the
+   sender is genuinely standing on, and a press that races the ~1 RTT stale
+   last-accepted position (just stepped onto the tile, report not yet
+   accepted) is a harmless no-op until the next accepted report lands on it.
+3. The action then runs in `interactions.ts` (`runInteraction`): a gid →
+   handler map where the actual effects live. `showquest` currently logs
+   `[jungle:interaction] <name> (<sessionId>) showquest`; real quest actions
+   are the next step. New interaction tiles = a registry entry in
+   `packages/shared/.../interaction.ts` + a handler in `interactions.ts` + the
+   gid placed in the map.
 
 ### Reconnection (drop → resume on the same seat)
 

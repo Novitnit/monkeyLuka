@@ -165,7 +165,7 @@ see `discoveries/agents.md` for the format and conventions.
 The player simulation is **client-side**: the client runs the collision and
 run/jump physics every frame with `packages/shared/src/physics/` (tile
 collision: 57 solid, 65 folds into 57, 110/109/262/287/288 slopes,
-464 dead-zone pits) and renders its own prediction
+464 dead-zone pits, 315 interaction tiles) and renders its own prediction
 with no server round-trip. Slope contacts: 110/109 landings rest on the flat
 top lip
 (never hoist an under-runner walking below a chamfer); 262 climbing rides the
@@ -199,7 +199,26 @@ returns the player to its checkpoint through the exact
 freeze reconciliation until the server confirms, and let the room
 re-baseline at the spawn so the jump isn't a teleport violation) — the
 Colyseus room no longer probes or logs the pits, and the web
-debug overlay draws the pit outline RED (`hazard` collision segments). The
+debug overlay draws the pit outline RED (`hazard` collision segments). 315
+is the first **interaction tile** (a signpost in the map at tile (17, 11),
+stood on from the floor below): interaction gids are NOT collision geometry
+– `buildTileGrid` folds them to 0 (never into a `TileKind`, or the
+penetration fallthrough would turn the new kind into a slope wedge) and
+they live in a separate `InteractionGrid` (`buildInteractionGrid`, built
+from the same `layer1`) that only the E-key feet probe reads. Standing on
+one and pressing E (edge-triggered, grounded only) sends
+`PLAYER_INTERACTION_MESSAGE` with the gid the client's feet probe found;
+the room does NOT trust that gid alone — it re-probes its OWN last accepted
+position with the same shared rule (`interactionTileUnderFeet`, which also
+walks up the cell above the feet when they sit at/within 2px of a cell
+boundary, because the signpost's base is flush with the standing floor's
+top, i.e. in the cell above the feet) and only runs the action when the
+gids agree AND the accepted report is grounded, so a forged or stale press
+is a no-op. Actions resolve from the shared `INTERACTION_TILE_ACTIONS`
+registry (315 → "showquest", currently just a server-side log via
+`runInteraction` in `apps/server/src/rooms/jungle/interactions.ts` — e.g.
+`[jungle:interaction] <name> (<sessionId>) showquest`); the quest UI the
+action will drive is the next step. The
 Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /

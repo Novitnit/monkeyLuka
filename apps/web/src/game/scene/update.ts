@@ -10,6 +10,8 @@ import {
   DEFAULT_PLAYER_PHYSICS,
   PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
+  PLAYER_INTERACTION_MESSAGE,
+  interactionTileUnderFeet,
   isBoxInDeadZone,
   type PlayerInput,
 } from "@monkeyluka/shared";
@@ -62,6 +64,32 @@ export function createSceneUpdate(
           phaser.Input.Keyboard.JustDown(state.cursors.space)) ||
         (state.keyW && phaser.Input.Keyboard.JustDown(state.keyW)),
     );
+
+    // --- Interaction tiles: standing on one and pressing E triggers its
+    // action on the server. The client probes its OWN predicted feet cell
+    // (the freshest spot, like the dead-zone probe below); the sent gid is
+    // advisory — the room re-probes its last accepted position with the
+    // same shared rule before running the action, so a stale or forged
+    // press is a no-op. Edge-triggered (JustDown), and only while grounded
+    // (standing on the tile, not jumping through it). ---
+    if (
+      state.keyE &&
+      player.physics.grounded &&
+      phaser.Input.Keyboard.JustDown(state.keyE)
+    ) {
+      const gid =
+        state.interactions === null
+          ? 0
+          : interactionTileUnderFeet(
+              state.interactions,
+              player.physics.x,
+              player.physics.y,
+              DEFAULT_PLAYER_PHYSICS.height,
+            );
+      if (gid !== 0) {
+        room.send(PLAYER_INTERACTION_MESSAGE, { gid });
+      }
+    }
 
     // --- Debug: R returns to the checkpoint. Only registered when
     // NEXT_PUBLIC_DEBUG is on; the room's checkpoint handler re-baselines

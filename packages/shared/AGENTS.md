@@ -60,7 +60,10 @@ place because every tsconfig here uses `"moduleResolution": "bundler"`
 `src/physics/` is a **barrel entry point** (`index.ts`) — the code is split
 into focused modules re-exported so all existing imports
 (`@monkeyluka/shared`, `./physics`) keep working: `tiles.ts` (tile constants,
-layer → `SolidGrid`, world bounds), `collision/` (point/AABB tests +
+layer → `SolidGrid`, world bounds), `interaction.ts` (interaction tiles:
+the gid → action registry `INTERACTION_TILE_ACTIONS`, the
+`InteractionGrid` + `buildInteractionGrid`, and the
+`interactionTileUnderFeet` feet probe that drives the E key), `collision/` (point/AABB tests +
 penetration helpers + `wallBeside` wall-adjacency probe, split into
 `masks.ts` (the pixel masks for 288 stairs / 464 dead zone + the shared
 box-overlap / cell-walk / pixel-mask helpers `cellOverlapRect`,
@@ -90,13 +93,28 @@ or Colyseus imports — so it can also be unit-tested directly.
   `TILE_DEAD_ZONE` (464, the dead-zone pit — a pixel-mask open basin in
   `collision/masks.ts`'s `DEAD_ZONE_MASK`: rows 13-15 are a solid 3px base, rows
   0-12 are entirely open; it stays its own kind so the penetration code
-  never treats it as a slope), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
+  never treats it as a slope), `TILE_INTERACTION` (315, the first interaction
+  tile — NOT a collision kind: `buildTileGrid` folds it to 0 and it lives
+  only in the interaction grid; standing on it and pressing E runs its
+  action on the server), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
   names from these so rendering and physics can't drift.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
   queries; `isBoxInDeadZone` for the dead-zone touch probe (the web client
   calls it every frame to gate the automatic checkpoint return on 464
   touch); `gridPixelSize` for world bounds.
+- Interaction tiles (315): `INTERACTION_TILE_ACTIONS` maps an interaction
+  gid → action id (315 → `"showquest"`); `buildInteractionGrid(layer)` →
+  `InteractionGrid` (same dims/layer as the collision grid, only
+  registered gids kept, 0 = inert); `interactionTileUnderFeet(grid, x, y,
+  height)` is the E-key probe — it reads the cell under the AABB's bottom
+  edge and, when the feet sit at/within `INTERACTION_FEET_SLACK` (2px) of a
+  cell boundary, also the cell just above, because a signpost's base is
+  placed flush with the standing surface (315 sits directly above the
+  floor cell it triggers from). The web client probes its local prediction
+  with it on E; the server re-probes its own last accepted position with
+  the same rule before running the action, so the wire `gid` alone can't
+  fire an interaction the player isn't standing on.
 - Slope contact rules (see
   `discoveries/jungle-slope-climb-buries-player-kicks-teleport.md` for the
   full diagnosis): 110/109 are corner brackets whose top edge is solid across
@@ -170,6 +188,10 @@ or Colyseus imports — so it can also be unit-tested directly.
   contract (predicted position/velocity/grounded/**clinging**/facing). The
   state fields are advisory; only a report that passes
   `validatePositionReport` is broadcast.
+- `PLAYER_INTERACTION_MESSAGE` / `PlayerInteractionMessage` — the client→server
+  wire contract for the E key: a single advisory `gid`; the server ignores
+  it unless its own feet probe on the last accepted position reports the
+  same gid (see the interaction-tile bullet above).
 - `validatePositionReport(...)` + `ANTI_CHEAT` — server-side trajectory checks
   against the **last accepted report**: teleport (too far from it / buried in
   geometry) and abnormal speed, plus rate/flood limits. A failing report makes

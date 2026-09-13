@@ -6,13 +6,16 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_CHECKPOINT_MESSAGE,
   PLAYER_INPUT_MESSAGE,
+  PLAYER_INTERACTION_MESSAGE,
   PlayerInfo,
   createPlayerState,
+  interactionTileUnderFeet,
   validatePositionReport,
   type JungleRoomState,
 } from "@monkeyluka/shared";
 import { loadJungleMap, type JungleMapData } from "../../game/jungle-map";
-import { clampVelocity, sanitizePlayerInput } from "./input";
+import { clampVelocity, sanitizePlayerInput, sanitizePlayerInteraction } from "./input";
+import { runInteraction } from "./interactions";
 import { writeIfChanged } from "./schema-write";
 import type { ServerPlayer } from "./server-player";
 
@@ -58,6 +61,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     if(debug){ console.log(`Room ${this.roomId} created`) }
     this.onMessage(PLAYER_INPUT_MESSAGE, (client, message: unknown) => {
       this.onPlayerInput(client, message);
+    });
+    this.onMessage(PLAYER_INTERACTION_MESSAGE, (client, message: unknown) => {
+      this.onPlayerInteraction(client, message);
     });
     this.onMessage(PLAYER_CHECKPOINT_MESSAGE, (client) => {
       this.onCheckpointReturn(client);
@@ -190,6 +196,42 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       writeIfChanged(info, "clinging", player.lastValid.clinging);
       writeIfChanged(info, "facing", player.lastValid.facing);
     }
+  }
+
+  /**
+   * Trigger an interaction tile (the E key, sent by the web client when its
+   * local feet probe finds a gid). The room does not trust the wire `gid`
+   * alone: it re-probes its OWN last accepted position with the shared
+   * `interactionTileUnderFeet` rule (same one the client uses) and only runs
+   * the action when both agree — so a forged message can only fire an
+   * interaction the player is genuinely standing on, and a stale report (the
+   * player just stepped onto the tile) is a harmless no-op until the next
+   * accepted report lands on it. The action must additionally be grounded in
+   * the accepted report (standing, not jumping through).
+   */
+  private onPlayerInteraction(client: Client, message: unknown): void {
+    const player = this.sim.get(client.sessionId);
+    if (!player) return;
+
+    const payload = sanitizePlayerInteraction(message);
+    if (!payload) return;
+
+    // Must be standing on the tile in the last ACCEPTED report — never the
+    // client-supplied position (the schema holds only accepted reports).
+    if (!player.lastValid.grounded) return;
+    const gid = interactionTileUnderFeet(
+      this.map.interactions,
+      player.lastValid.x,
+      player.lastValid.y,
+      DEFAULT_PLAYER_PHYSICS.height,
+    );
+    if (gid !== payload.gid) return;
+
+    const info = this.state.players.get(client.sessionId);
+    runInteraction(payload.gid, {
+      sessionId: client.sessionId,
+      name: info?.name ?? client.sessionId,
+    });
   }
 
   private removePlayer(sessionId: string): void {

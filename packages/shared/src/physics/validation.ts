@@ -15,6 +15,15 @@ import type { SolidGrid } from "./tiles";
 export const PLAYER_INPUT_MESSAGE = "player:input";
 
 /**
+ * Colyseus message name: client → server interaction trigger (the E key on
+ * an interaction tile — see interaction.ts). The room resolves the action
+ * from the sent gid **after re-probing the player's last accepted position**
+ * against the shared interaction grid, so a forged message can only fire an
+ * interaction the sender is genuinely standing on.
+ */
+export const PLAYER_INTERACTION_MESSAGE = "player:interaction";
+
+/**
  * Debug wire message: the client asks to be teleported back to its
  * checkpoint (the R key). The room registers the handler **unconditionally**
  * — its target is the server-chosen spawn, never a client-supplied
@@ -49,6 +58,16 @@ export interface PlayerInputMessage {
   clinging: boolean;
   /** Resulting facing, 1 right / -1 left — advisory (normalized on server). */
   facing: number;
+}
+
+/**
+ * Payload of `PLAYER_INTERACTION_MESSAGE`. Deliberately minimal: `gid` is
+ * advisory — the server ignores it unless its own feet probe (on the last
+ * accepted position, same shared rule as the client) reports the same gid.
+ */
+export interface PlayerInteractionMessage {
+  /** The interaction tile gid the player believes it is standing on. */
+  gid: number;
 }
 
 /** Anti-cheat tuning shared so client and server agree on the rules. */

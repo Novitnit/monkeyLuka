@@ -1,10 +1,15 @@
 /**
- * Wire-payload handling for `PLAYER_INPUT_MESSAGE`: a strict shape check that
- * rejects forged payloads before they reach the validation pipeline, and the
- * advisory-velocity clamp applied to accepted reports before broadcast.
+ * Wire-payload handling for `PLAYER_INPUT_MESSAGE` / `PLAYER_INTERACTION_MESSAGE`:
+ * strict shape checks that reject forged payloads before they reach the
+ * validation pipeline, and the advisory-velocity clamp applied to accepted
+ * reports before broadcast.
  */
 
-import type { PlayerInputMessage } from "@monkeyluka/shared";
+import {
+  isInteractionTileGid,
+  type PlayerInputMessage,
+  type PlayerInteractionMessage,
+} from "@monkeyluka/shared";
 
 /** Strict shape check of the wire payload; null when it looks forged. */
 export function sanitizePlayerInput(message: unknown): PlayerInputMessage | null {
@@ -52,4 +57,22 @@ export function sanitizePlayerInput(message: unknown): PlayerInputMessage | null
 /** Clamp an advisory velocity to `max` (the physical ceiling for that axis). */
 export function clampVelocity(v: number, max: number): number {
   return Math.max(-max, Math.min(max, v));
+}
+
+/**
+ * Strict shape check of the `PLAYER_INTERACTION_MESSAGE` payload; null when
+ * it looks forged. `gid` must be a registered interaction tile (not just any
+ * number) — the position itself is never trusted from the wire: validation
+ * happens in the room via the shared `interactionTileUnderFeet` probe on the
+ * player's last accepted position.
+ */
+export function sanitizePlayerInteraction(
+  message: unknown,
+): PlayerInteractionMessage | null {
+  if (typeof message !== "object" || message === null) return null;
+  const m = message as Record<string, unknown>;
+  if (typeof m.gid !== "number" || !Number.isFinite(m.gid)) return null;
+  const gid = Math.trunc(m.gid);
+  if (!isInteractionTileGid(gid)) return null;
+  return { gid };
 }
