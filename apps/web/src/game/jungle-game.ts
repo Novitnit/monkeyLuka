@@ -24,6 +24,22 @@ export interface JungleGameOptions {
    */
   doorDebug?: boolean;
   /**
+   * Draw the trap attack-radius debug boxes (red, one per marker — the
+   * exact `isBoxTouchingTrapSpikeRun` kill AABB around each sweeping
+   * spike). Defaults to the NEXT_PUBLIC_DEBUG flag — off unless it's
+   * "1"/"true" — overridable at runtime via
+   * `__jungleTrapSpikeRunDebug.setEnabled(...)`.
+   */
+  trapSpikeRunDebug?: boolean;
+  /**
+   * Sprite-sheet texture key for the Trap_Spike_Run movable traps.
+   * Defaults to the built-in `Trap_Spike_Run.png` sheet (preloaded +
+   * animated by the scene itself); pass a different key to swap in a
+   * caller-loaded sheet instead (rendered as a static frame 0 — only the
+   * built-in sheet has its 2×3 layout and idle animation registered).
+   */
+  trapSpikeRunTexture?: string;
+  /**
    * Live on-screen control state for touch devices (see
    * `components/touch-controls.tsx` — the HUD writes here, the scene's
    * update loop merges it into the player input like the keyboard axes).

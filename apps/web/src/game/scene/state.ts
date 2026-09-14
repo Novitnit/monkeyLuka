@@ -10,11 +10,16 @@ import type {
   DoorLinkGroup,
   InteractionGrid,
   SolidGrid,
+  TrapSpikeRunEntity,
 } from "@monkeyluka/shared";
 import type { CollisionDebug } from "../collision/collision-debug";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
 import type { TouchControlsState } from "../touch/touch-input";
+import type {
+  TrapSpikeRunDebug,
+  TrapSpikeRunView,
+} from "../trap/trap-spike-run-render";
 
 /** Scene-scoped state shared between create() and update(). */
 export interface JungleSceneState {
@@ -34,6 +39,29 @@ export interface JungleSceneState {
    * groups' doors when their showquests are all answered.
    */
   doorGroups: DoorLinkGroup[] | null;
+  /**
+   * Movable traps parsed from the map's `trap` objectgroup (see
+   * trap-spike-run.ts in @monkeyluka/shared): `Trap_Spike_Run` objects
+   * with a patrol rect and speed props. Null until the map finishes
+   * loading; future trap types add their own entity lists beside this one.
+   */
+  trapSpikeRuns: TrapSpikeRunEntity[] | null;
+  /**
+   * Container holding the trap views: a transform twin of `rooms[0]` —
+   * added after every room but before the player layer, so trap markers
+   * draw over the map art and under the player sprites (see create.ts).
+   * Shared by every trap type.
+   */
+  trapLayer: Phaser.GameObjects.Container | null;
+  /** One view per trap entity; advanced by `updateTrapSpikeRunViews` each frame. */
+  trapSpikeRunViews: TrapSpikeRunView[] | null;
+  /**
+   * Debug overlay drawing each trap's red attack-radius box (the exact
+   * `isBoxTouchingTrapSpikeRun` AABB around the sweeping marker), gated
+   * by NEXT_PUBLIC_DEBUG like the collision overlay. Null when debug is
+   * off.
+   */
+  trapSpikeRunDebug: TrapSpikeRunDebug | null;
   /**
    * The collision-debug overlay handle (always created; visibility gated by
    * the NEXT_PUBLIC_DEBUG flag). The door-open sync drives it via
@@ -120,6 +148,10 @@ export function createJungleSceneState(): JungleSceneState {
     grid: null,
     interactions: null,
     doorGroups: null,
+    trapSpikeRuns: null,
+    trapLayer: null,
+    trapSpikeRunViews: null,
+    trapSpikeRunDebug: null,
     collisionDebug: null,
     openDoors: new Set(),
     playerLayer: null,

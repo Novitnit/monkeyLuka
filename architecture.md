@@ -117,7 +117,12 @@ engine both sides run verbatim:
 - `physics/` — barrel (`index.ts`) re-exporting the split simulation/validation modules
   `tiles.ts` (tile constants, grid, world bounds), `collision/` (point/AABB
   tests + penetration helpers, split into masks/geometry/point/box/support/penetration), `player/` (`stepPlayer()`: run accel, gravity,
-  coyote/buffered jump), `validation.ts` (`PLAYER_INPUT_MESSAGE` contract + `validatePositionReport()` + `ANTI_CHEAT` rules). Covered by
+  coyote/buffered jump), `trap-spike-run.ts` (movable traps: `Trap_Spike_Run`
+  objects from the `trap` objectgroup patrol their rect — `stepTrapSpikeRun`
+  bounces at the edges and re-rolls a random speed every
+  `time2change_speed` seconds; `isBoxTouchingTrapSpikeRun` is the lethal contact
+  probe the web client runs; the web renders the `Trap_Spike_Run.png` sheet),
+  `validation.ts` (`PLAYER_INPUT_MESSAGE` contract + `validatePositionReport()` + `ANTI_CHEAT` rules). Covered by
   `src/physics.test.ts` (`bun test`). Movement runs **client-side**: the client
   simulates itself every frame with `stepPlayer()` and reports the result; the
   room validates the reported trajectory and broadcasts it, stopping the player

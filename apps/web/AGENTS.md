@@ -194,6 +194,54 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   every door in the same group, clipped per room like the collision overlay,
   and logs each group's counts; runtime toggle `__jungleDoorDebug`.
 
+- **Movable traps (trap objectgroup)**: `src/game/trap/trap-spike-run-render.ts`
+  renders the map's `trap` objectgroup — each `Trap_Spike_Run` object
+  (patrol rect + `speedMin`/`speedMax`/`time2change_speed` props, parsed by
+  `buildTrapSpikeRuns` in @monkeyluka/shared after `tiled-map.ts` picks up object
+  `properties`; the object's own Tiled id distinguishes instances) as a
+  **sprite from the `Assets/trap/Trap_Spike_Run.png` sheet** that sweeps
+  the rect back and forth (`updateTrapSpikeRunViews` → shared
+  `stepTrapSpikeRun`, called
+  every frame from `scene/update.ts` independent of the connection state,
+  since traps never report to the server). The sheet is a 32×48 image — a
+  2×3 grid of 16×16 cells like the jump sheet, one frame per cell,
+  row-major; frames 0–4 hold the spike strip (the near-identical copies
+  are the author's subtle idle shimmer) and the last cell is a stray
+  base sliver, so the looping idle animation (`registerTrapSpikeRunAnimations`,
+  also in trap-spike-run-render.ts, called by create.ts right before the views are
+  built) uses 5 of 6 frames and skips it. The sheet is preloaded by
+  create.ts (`TRAP_SPIKE_RUN_TEXTURE`, served via the `public/trap` symlink — the
+  same `Assets` → `public` symlink pattern as `map` and `player`) and
+  passed to each view as the default texture; the 16×16 frame matches the
+  trap's 16px patrol strip, so the sprite footprint is identical to the
+  old red-circle placeholder. Views live in `state.trapSpikeRunViews`
+  inside the shared `state.trapLayer` — a
+  transform twin of room 0 inserted after the rooms but before the player
+  layer, so markers draw over the map art and under the player sprites.
+  Touching a marker is lethal: `scene/update.ts` probes the player's own
+  simulated AABB against every marker (`isBoxTouchingTrapSpikeRun`, shared) and
+  hands the kill to `onDead` (`death.ts`, cause `"trap"`) — the same
+  freeze + death-question + checkpoint-return flow the 464 pit uses, with
+  the body teleported to the checkpoint at kill time so the revived
+  player never re-touches the sweeping spike.
+  `JungleGameOptions.trapSpikeRunTexture` can still swap each marker for a
+  different caller-loaded sheet (static frame 0 — only the built-in sheet
+  has its 2×3 layout + idle animation registered); with no texture at all
+  the marker falls back to the red circle.
+  With `NEXT_PUBLIC_DEBUG` on (or `options.trapSpikeRunDebug`), a red
+  **attack-radius box** outlines each marker's lethal footprint — the
+  exact `isBoxTouchingTrapSpikeRun` `trap.height`-square AABB — drawn by
+  `createTrapSpikeRunDebug` (also in trap-spike-run-render.ts) as one
+  Graphics per trap child of the trap layer, redrawn every frame from
+  update.ts right after
+  `updateTrapSpikeRunViews` so it follows the sweep; runtime toggle
+  `__jungleTrapSpikeRunDebug.setEnabled(...)`.
+  The naming is per-type because more trap types are coming: a future
+  `Trap_Saw` gets its own shared model + render module beside
+  `trap-spike-run.ts` / `trap-spike-run-render.ts`, sharing the `trap`
+  objectgroup, the `public/trap` assets dir, and the scene's trap layer,
+  with its own `state.trapSaw*` fields and kill probe.
+
 - **Player movement & netcode**: `src/game/player/player.ts` drives the
   monkey with the **shared physics** (`createPlayerState`/`stepPlayer` from
   `@monkeyluka/shared`; the grid comes from building `layer1` with

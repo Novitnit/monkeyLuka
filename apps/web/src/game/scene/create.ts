@@ -13,9 +13,11 @@ import type Phaser from "phaser";
 import {
   COLLISION_LAYER_NAME,
   ROOM_OBJECT_GROUP_NAME,
+  TRAP_OBJECT_GROUP_NAME,
   buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
+  buildTrapSpikeRuns,
   groupRoomObjectsByName,
 } from "@monkeyluka/shared";
 import {
@@ -36,8 +38,14 @@ import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
 import { createDoorDebug } from "../door/door-debug";
 import { createQuestBox } from "../quest/quest-box";
+import {
+  TRAP_SPIKE_RUN_TEXTURE,
+  createTrapSpikeRunDebug,
+  createTrapSpikeRunView,
+  registerTrapSpikeRunAnimations,
+} from "../trap/trap-spike-run-render";
 import type { JungleGameOptions, JungleRoom } from "../jungle-game";
-import { MAP_DIR, MAP_FILE, PLAYER_DIR } from "./constants";
+import { MAP_DIR, MAP_FILE, PLAYER_DIR, TRAP_DIR } from "./constants";
 import {
   isCollisionDebugEnabled,
   isDebugEnabled,
@@ -72,6 +80,9 @@ export function createSceneCreate(
     this.load.image(PLAYER_CLING_TEXTURE, `${PLAYER_DIR}/sheets/cling.png`);
     this.load.image(PLAYER_JOG_TEXTURE, `${PLAYER_DIR}/sheets/jog.png`);
     this.load.image(PLAYER_JUMP_TEXTURE, `${PLAYER_DIR}/sheets/jump.png`);
+    // The movable-trap spike sheet (served via the `public/trap` symlink),
+    // preloaded so trap views can be built from it once the world loads.
+    this.load.image(TRAP_SPIKE_RUN_TEXTURE, `${TRAP_DIR}/Trap_Spike_Run.png`);
     this.load.once(phaser.Loader.Events.COMPLETE, () => {
       void (async () => {
         try {
@@ -157,6 +168,52 @@ export function createSceneCreate(
               {linkColor:0xbb68f2}
             );
             setDebugHandle("__jungleDoorDebug", doorDebug);
+          }
+
+          // Movable traps: the `trap` objectgroup's `Trap_Spike_Run`
+          // objects (patrol rect + speedMin/speedMax/time2change_speed
+          // props) become markers sweeping the rect back and forth, driven
+          // by the shared trap model in @monkeyluka/shared. Their layer is
+          // another transform twin of room 0 (children are in map-pixel
+          // coordinates, mapped through the same scale as the rooms) — but
+          // inserted in the display list BEFORE the player layer below, so
+          // trap markers draw over the map art and under the player
+          // sprites. Each marker renders the `Trap_Spike_Run.png` sheet
+          // (frames + looping idle animation registered just before the
+          // views are built); pass options.trapSpikeRunTexture to swap in
+          // a different caller-loaded sheet.
+          registerTrapSpikeRunAnimations(this);
+          const trapObjects =
+            map.objectGroups.find(
+              (group) => group.name === TRAP_OBJECT_GROUP_NAME,
+            )?.objects ?? [];
+          const trapSpikeRuns = buildTrapSpikeRuns(trapObjects);
+          if (trapSpikeRuns.length > 0) {
+            const trapLayer = this.add.container(
+              render.rooms[0].x,
+              render.rooms[0].y,
+            );
+            trapLayer.setScale(render.scale);
+            state.trapSpikeRuns = trapSpikeRuns;
+            state.trapLayer = trapLayer;
+            const views = trapSpikeRuns.map((trapSpikeRun) =>
+              createTrapSpikeRunView(this, trapSpikeRun, trapLayer, {
+                texture: options.trapSpikeRunTexture ?? TRAP_SPIKE_RUN_TEXTURE,
+              }),
+            );
+            state.trapSpikeRunViews = views;
+            // Debug (NEXT_PUBLIC_DEBUG): red attack-radius boxes around
+            // each marker — the exact `isBoxTouchingTrapSpikeRun` kill
+            // AABB, redrawn every frame as the marker sweeps (update.ts).
+            if (options.trapSpikeRunDebug ?? isDebugEnabled()) {
+              const trapSpikeRunDebug = createTrapSpikeRunDebug(
+                this,
+                views,
+                trapLayer,
+              );
+              setDebugHandle("__jungleTrapSpikeRunDebug", trapSpikeRunDebug);
+              state.trapSpikeRunDebug = trapSpikeRunDebug;
+            }
           }
 
           // Player sprites get their own layer instead of living inside

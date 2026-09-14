@@ -23,6 +23,15 @@
  *                       objects grouped by name and classified against the
  *                       tile entities (showquest interaction vs door) so a
  *                       signpost knows which doors it gates
+ * - `trap-spike-run.ts` – movable traps: the `trap` objectgroup's
+ *                       `Trap_Spike_Run` objects (patrol rect +
+ *                       speedMin/speedMax/time2change_speed props) become
+ *                       `TrapSpikeRunEntity`s; `stepTrapSpikeRun` sweeps
+ *                       the marker back and forth inside the rect,
+ *                       re-rolling a random speed every
+ *                       `time2change_speed` seconds, and
+ *                       `isBoxTouchingTrapSpikeRun` is the lethal contact
+ *                       probe the web client runs against the player's box
 
  * - `collision/`      – point/AABB collision tests + penetration helpers +
  *                       the `wallBeside` wall-adjacency probe, split into
@@ -88,6 +97,7 @@ export * from "./tiles";
 export * from "./interaction";
 export * from "./door";
 export * from "./door-links";
+export * from "./trap-spike-run";
 export * from "./collision";
 export * from "./player";
 export * from "./validation";

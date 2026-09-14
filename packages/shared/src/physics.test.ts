@@ -30,8 +30,10 @@ import {
   buildDoorEntities,
   buildInteractionGrid,
   buildTileGrid,
+  buildTrapSpikeRuns,
   clearDoorFromGrid,
   createPlayerState,
+  createTrapSpikeRunMotion,
   doorKey,
   gridPixelSize,
   grabableWallBeside,
@@ -40,17 +42,22 @@ import {
   interactionTileUnderFeet,
   isBoxInDeadZone,
   isBoxSolid,
+  isBoxTouchingTrapSpikeRun,
   isDoorTileGid,
   isInteractionTileGid,
   isPointSolid,
+  isTrapSpikeRunObject,
   maxPlayerSpeed,
   probeInteractionTile,
   stepPlayer,
+  stepTrapSpikeRun,
   validatePositionReport,
   type CollisionLayerData,
   type PlayerInput,
   type RoomObject,
   type SolidGrid,
+  type TrapObjectAnnotation,
+  type TrapObjectProperty,
 } from "./physics";
 
 /** Small helpers to build test maps. */
@@ -2453,5 +2460,195 @@ describe("door-link groups (room objectgroup ↔ tiles)", () => {
     expect(groups[0]!.objects).toHaveLength(3);
     expect(groups[0]!.showquest).toHaveLength(1);
     expect(groups[0]!.doors).toHaveLength(1);
+  });
+});
+
+describe("Trap_Spike_Run entities (patrol)", () => {
+  const trapSpikeRunProps = (
+    overrides: Record<string, unknown> = {},
+  ): TrapObjectProperty[] =>
+    Object.entries({
+      speedMax: 100,
+      speedMin: 50,
+      time2change_speed: 5,
+      ...overrides,
+    }).map(([name, value]) => ({ name, value }));
+
+  const trapSpikeRunObj = (
+    name = "Trap_Spike_Run",
+    overrides: Partial<TrapObjectAnnotation> = {},
+  ): TrapObjectAnnotation => ({
+    id: 1,
+    name,
+    x: 944,
+    y: 208,
+    width: 368,
+    height: 16,
+    properties: trapSpikeRunProps(),
+    ...overrides,
+  });
+
+  test("recognizes Trap_Spike_Run objects and coerces the props", () => {
+    // The real map types speedMax as a string ("100") — values are coerced
+    // regardless of Tiled's type field. The entity id is the Tiled
+    // object's own id, so two instances stay distinct despite the shared
+    // name.
+    const trapSpikeRuns = buildTrapSpikeRuns([
+      trapSpikeRunObj("Trap_Spike_Run", {
+        properties: trapSpikeRunProps({ speedMax: "100" }),
+      }),
+      trapSpikeRunObj("Trap_Spike_Run", { id: 2 }),
+    ]);
+    expect(trapSpikeRuns).toHaveLength(2);
+    expect(trapSpikeRuns[0]).toMatchObject({
+      id: 1,
+      x: 944,
+      y: 208,
+      width: 368,
+      height: 16,
+      speedMin: 50,
+      speedMax: 100,
+      time2changeSpeed: 5,
+    });
+    expect(trapSpikeRuns[1]!.id).toBe(2);
+  });
+
+  test("isTrapSpikeRunObject matches only the exact trap name", () => {
+    expect(isTrapSpikeRunObject("Trap_Spike_Run")).toBe(true);
+    // The old suffixed spelling is no longer recognized (the game renamed
+    // the object to match the sprite sheet).
+    expect(isTrapSpikeRunObject("Trap_Spike_Run_1")).toBe(false);
+    expect(isTrapSpikeRunObject("signpost")).toBe(false);
+    expect(isTrapSpikeRunObject("")).toBe(false);
+  });
+
+  test("skips non-trap names and missing/invalid properties", () => {
+    const trapSpikeRuns = buildTrapSpikeRuns([
+      trapSpikeRunObj("signpost"),
+      trapSpikeRunObj("Trap_Spike_Run_1"), // suffixed spelling — not a trap
+      trapSpikeRunObj("Trap_Spike_Run "), // trailing space — exact match only
+      trapSpikeRunObj("Trap_Spike_Run", { properties: [] }),
+      // speedMin > speedMax is an empty range — misconfigured, skipped.
+      trapSpikeRunObj("Trap_Spike_Run", { properties: trapSpikeRunProps({ speedMin: 200 }) }),
+      // Same for a non-positive max.
+      trapSpikeRunObj("Trap_Spike_Run", { properties: trapSpikeRunProps({ speedMax: -1 }) }),
+      // A zero interval would re-roll forever inside stepTrapSpikeRun.
+      trapSpikeRunObj("Trap_Spike_Run", {
+        properties: trapSpikeRunProps({ time2change_speed: 0 }),
+      }),
+    ]);
+    expect(trapSpikeRuns).toHaveLength(0);
+  });
+
+  test("motion starts centered in the patrol rect, moving right", () => {
+    const [spikeRun] = buildTrapSpikeRuns([trapSpikeRunObj()]);
+    const motion = createTrapSpikeRunMotion(spikeRun!, () => 0.5);
+    expect(motion.x).toBe(spikeRun!.x + spikeRun!.width / 2);
+    expect(motion.y).toBe(spikeRun!.y + spikeRun!.height / 2);
+    expect(motion.vx).toBeCloseTo(
+      spikeRun!.speedMin + 0.5 * (spikeRun!.speedMax - spikeRun!.speedMin),
+      10,
+    );
+    expect(motion.untilSpeedChange).toBe(spikeRun!.time2changeSpeed);
+  });
+
+  test("bounces at the patrol rect's edges, flipping direction", () => {
+    const [spikeRun] = buildTrapSpikeRuns([trapSpikeRunObj()]);
+    const motion = createTrapSpikeRunMotion(spikeRun!, () => 0); // pinned to speedMin
+    const dt = 1 / 60;
+    // Runs to the right edge and clamps exactly onto it.
+    let guard = 0;
+    while (motion.x < spikeRun!.x + spikeRun!.width && guard++ < 100_000) {
+      stepTrapSpikeRun(motion, spikeRun!, dt, () => 0);
+    }
+    expect(guard).toBeLessThan(100_000);
+    expect(motion.x).toBe(spikeRun!.x + spikeRun!.width);
+    expect(motion.vx).toBeLessThan(0); // flipped back left
+    // Then back to the left edge.
+    guard = 0;
+    while (motion.x > spikeRun!.x && guard++ < 100_000) {
+      stepTrapSpikeRun(motion, spikeRun!, dt, () => 0);
+    }
+    expect(motion.x).toBe(spikeRun!.x);
+    expect(motion.vx).toBeGreaterThan(0); // flipped back right
+  });
+
+  test("re-rolls a new random speed every time2change_speed seconds", () => {
+    // A wide trap: at speedMin the first 4.99s step (≈250px) stays inside
+    // the patrol rect, so no bounce flips the direction before the roll.
+    const [spikeRun] = buildTrapSpikeRuns([
+      trapSpikeRunObj("Trap_Spike_Run", { x: 0, width: 1000 }),
+    ]); // interval 5s, speed 50..100
+    const motion = createTrapSpikeRunMotion(spikeRun!, () => 0); // starts at speedMin
+    let calls = 0;
+    const rng = () => {
+      calls++;
+      return 1; // → speedMax = 100
+    };
+    // One step short of the interval: no re-roll yet.
+    stepTrapSpikeRun(motion, spikeRun!, spikeRun!.time2changeSpeed - 0.01, rng);
+    expect(calls).toBe(0);
+    // Crossing the interval re-rolls exactly once, keeping the direction.
+    stepTrapSpikeRun(motion, spikeRun!, 0.02, rng);
+    expect(calls).toBe(1);
+    expect(motion.vx).toBe(spikeRun!.speedMax); // still moving right
+    // The countdown restarts from the interval (minus the overshoot).
+    expect(motion.untilSpeedChange).toBeCloseTo(
+      spikeRun!.time2changeSpeed - 0.01,
+      5,
+    );
+  });
+
+  test("touching the marker kills: the box overlaps the trap's square", () => {
+    const [spikeRun] = buildTrapSpikeRuns([trapSpikeRunObj()]);
+    const motion = createTrapSpikeRunMotion(spikeRun!, () => 0.5); // centered in the rect
+    const half = spikeRun!.height / 2;
+    // A player box centered on the marker overlaps it regardless of how
+    // small the player collider is.
+    expect(
+      isBoxTouchingTrapSpikeRun(
+        motion,
+        spikeRun!,
+        motion.x,
+        motion.y,
+        config.width,
+        config.height,
+      ),
+    ).toBe(true);
+    // A box just inside the marker's right edge touches (edge contact is
+    // lethal — the same conservative stance as isBoxInDeadZone).
+    expect(
+      isBoxTouchingTrapSpikeRun(
+        motion,
+        spikeRun!,
+        motion.x + half + config.width / 2,
+        motion.y,
+        config.width,
+        config.height,
+      ),
+    ).toBe(true);
+    // A box a hair past the edge does not.
+    expect(
+      isBoxTouchingTrapSpikeRun(
+        motion,
+        spikeRun!,
+        motion.x + half + config.width / 2 + 0.01,
+        motion.y,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
+    // A player standing well above (e.g. on a platform over the patrol
+    // strip) never touches it.
+    expect(
+      isBoxTouchingTrapSpikeRun(
+        motion,
+        spikeRun!,
+        motion.x,
+        motion.y - spikeRun!.height - config.height,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
   });
 });

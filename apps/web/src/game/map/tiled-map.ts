@@ -67,6 +67,12 @@ export interface TiledTileLayer {
   gids: number[];
 }
 
+/** One custom property attached to a Tiled object (name + raw Tiled value). */
+export interface TiledObjectProperty {
+  name: string;
+  value: unknown;
+}
+
 /** One annotation object from a Tiled objectgroup (rectangle in map px). */
 export interface TiledObject {
   id: number;
@@ -75,6 +81,12 @@ export interface TiledObject {
   y: number;
   width: number;
   height: number;
+  /**
+   * Custom properties (e.g. the trap objectgroup's speed props). Tiled
+   * keeps the raw values — numeric props may arrive typed as strings (§
+   * trap parsing coerces with `Number()`), so the type is `unknown`.
+   */
+  properties: TiledObjectProperty[];
 }
 
 /** A Tiled objectgroup — the `room` group carries the door-link annotations. */
@@ -171,6 +183,8 @@ export interface RawTiledMap {
       y?: number;
       width?: number;
       height?: number;
+      // Custom properties (name + raw Tiled value).
+      properties?: Array<{ name?: string; value?: unknown }>;
     }>;
   }>;
   tilesets?: Array<{
@@ -262,6 +276,10 @@ export async function resolveTiledMap(
           y: obj.y ?? 0,
           width: obj.width ?? 0,
           height: obj.height ?? 0,
+          properties: (obj.properties ?? []).map((prop) => ({
+            name: prop.name ?? "",
+            value: prop.value,
+          })),
         })),
       });
       continue;

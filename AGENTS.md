@@ -47,7 +47,7 @@ monkeyLuka/
     └── shared/           # @monkeyluka/shared — framework-agnostic shared code → packages/shared/AGENTS.md
         └── src/
             ├── index.ts      # schemas (JungleState/PlayerInfo), room names, origin allowlist
-            └── physics/      # barrel index.ts → tiles.ts / collision/ / player/ / validation.ts
+            └── physics/      # barrel index.ts → tiles.ts / collision/ / player/ / trap-spike-run.ts / validation.ts
 ```
 
 ## Requirements & versions
@@ -251,7 +251,58 @@ is a no-op. Actions resolve from the shared `INTERACTION_TILE_ACTIONS`
 registry (315 → `"showquest"`): `runInteraction` in
 `apps/server/src/rooms/jungle/interactions.ts` sends the player a random
 question from `Assets/question.json` with its choices **shuffled and
-unlabeled** — see the quest bullet below. **Door entities**: the four gids 375/376/401/402 placed as a
+unlabeled** — see the quest bullet below.
+**Movable traps**: the map's `trap` objectgroup (a container shared by
+future trap types) holds one rectangle per instance, named
+`Trap_Spike_Run` (the same name as the sprite sheet; the object's own
+Tiled id distinguishes the instances), with
+`speedMin`/`speedMax`/`time2change_speed` custom props —
+`buildTrapSpikeRuns` in
+`packages/shared/src/physics/trap-spike-run.ts` recognizes them by exact
+name (the
+numeric props
+are coerced because Tiled may type them as strings, e.g. `speedMax:
+"100"; misconfigured objects are skipped) into `TrapSpikeRunEntity`s
+whose rect is the
+patrol area. The web client renders each trap as a sprite from the
+`Assets/trap/Trap_Spike_Run.png` sheet (a 32×48 image — a 2×3 grid of
+16×16 cells, one frame per cell, row-major like the jump sheet; frames
+0–4 are the spike strip, the last cell is a stray sliver, so the looping
+idle animation uses 5 of 6 and skips it) that sweeps the rect back and
+forth along its horizontal axis (`stepTrapSpikeRun`: bounce at the rect's edges,
+and every `time2change_speed` seconds roll a new random speed in
+[speedMin, speedMax], direction kept — RNG injectable for determinism)
+via a dedicated trap layer (a transform twin of room 0, above the rooms,
+under the player layer). The scene preloads the sheet (`scene/create.ts`,
+served via the `public/trap` symlink), registers its frames + idle anim
+(`registerTrapSpikeRunAnimations` in
+`apps/web/src/game/trap/trap-spike-run-render.ts`)
+and passes it as the default `trapSpikeRunTexture` —
+`JungleGameOptions.trapSpikeRunTexture`
+(web) can still swap each marker for a different caller-loaded sheet
+(rendered as a static frame 0; only the built-in sheet has its 2×3
+layout registered). Without a texture the marker falls back to a red
+circle. With `NEXT_PUBLIC_DEBUG` on, a red **attack-radius box** outlines
+ each marker's lethal AABB — the exact `isBoxTouchingTrapSpikeRun`
+ `trap.height`-square kill zone — and follows it as it sweeps
+ (`createTrapSpikeRunDebug` in
+ `apps/web/src/game/trap/trap-spike-run-render.ts`, redrawn every frame
+ after `updateTrapSpikeRunViews`; runtime toggle
+ `__jungleTrapSpikeRunDebug`).
+**Touching a trap marker kills**: the web update loop
+probes its own simulated AABB against every marker each frame
+(`isBoxTouchingTrapSpikeRun` in the shared trap model) and, on contact,
+hands the
+kill to `onDead` with cause `"trap"` — exactly the dead-zone flow
+(freeze, death question, checkpoint return; the body is teleported out of
+ the hazard at kill time so the revive can't re-kill it). All of this is
+ per-type: a future `Trap_Saw` gets its own entity/model/view module
+ beside `trap-spike-run.ts`, sharing the `trap` objectgroup and the
+ scene's trap layer, with its own `state.trapSaw*` fields. Client-side
+ only
+— no server state; the shared motion model is the seam for future
+validation.
+**Door entities**: the four gids 375/376/401/402 placed as a
 2×2 block (375,376 on top, 401,402 below) form one **door** Entity with
 two states (open/closed) — `buildDoorEntities` in
 `packages/shared/src/physics/door.ts` greedily recognizes each

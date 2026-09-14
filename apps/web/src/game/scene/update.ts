@@ -14,6 +14,7 @@ import {
   PLAYER_INTERACTION_MESSAGE,
   interactionTileUnderFeet,
   isBoxInDeadZone,
+  isBoxTouchingTrapSpikeRun,
   type PlayerInput,
 } from "@monkeyluka/shared";
 import { onDead } from "../death";
@@ -21,6 +22,7 @@ import { ROOM_HEIGHT, ROOM_WIDTH } from "../map/tiled-map";
 import { SNAP_DISTANCE } from "../player/player";
 import { syncRemotePlayers } from "../player/remote-players";
 import { syncOpenDoors } from "../door/door-open";
+import { updateTrapSpikeRunViews } from "../trap/trap-spike-run-render";
 import type { JungleRoom } from "../jungle-game";
 import { INPUT_INTERVAL_MS } from "./constants";
 import type { JungleSceneState } from "./state";
@@ -44,6 +46,16 @@ export function createSceneUpdate(
     if (!player || !grid || !playerLayer) return;
 
     const dt = Math.min(delta, 50) / 1000;
+
+    // Movable traps sweep independently of the connection state (they are
+    // world objects, not the player's simulation, and never report to the
+    // server): advance each trap's shared motion and move its marker to
+    // match. No-op until the world (trap layer/views) is built. The debug
+    // attack-radius boxes follow the markers, so they redraw right after.
+    if (state.trapSpikeRunViews) {
+      updateTrapSpikeRunViews(state.trapSpikeRunViews, dt);
+      state.trapSpikeRunDebug?.update(state.trapSpikeRunViews);
+    }
 
     // Door state is authoritative and synced through the schema: reconcile
     // any door the room opened into the local world (clear its collision
@@ -171,6 +183,31 @@ export function createSceneUpdate(
     ) {
       state.deathRequestAt = Date.now();
       room.send(PLAYER_DEATH_MESSAGE, {});
+    }
+
+    // --- Movable traps: touching a sweeping spike marker KILLS the player.
+    // The probe mirrors the dead-zone one below: it runs on the client's
+    // own simulated position (freshest spot; the broadcast is ~one RTT
+    // stale) against every trap's current marker, and only while alive with
+    // no revive return in flight. The marker's position is the client-side
+    // motion stepped above, so the kill follows exactly what the player
+    // sees. ---
+    if (
+      !state.checkpointPending &&
+      !state.dead &&
+      state.trapSpikeRunViews &&
+      state.trapSpikeRunViews.some((view) =>
+        isBoxTouchingTrapSpikeRun(
+          view.motion,
+          view.trapSpikeRun,
+          player.physics.x,
+          player.physics.y,
+          DEFAULT_PLAYER_PHYSICS.width,
+          DEFAULT_PLAYER_PHYSICS.height,
+        ),
+      )
+    ) {
+      onDead(player, "trap", room, state);
     }
 
     // --- Dead zone (464 hazard pits): touching one KILLS the player — the

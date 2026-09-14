@@ -85,7 +85,18 @@ rectangle is a named region that collects the showquest interactions and
 door entities whose centers fall inside it via `groupRoomObjectsByName` —
 same-name objects share one gate; the server's quest gate reads the same
 groups to open a gate's doors when every linked showquest is answered
-correctly), `player/` (the
+correctly), `trap-spike-run.ts` (movable traps: each `Trap_Spike_Run` object
+in the `trap` objectgroup is a patrol rectangle with
+`speedMin`/`speedMax`/`time2change_speed` props — `buildTrapSpikeRuns` recognizes
+them (exact name match; numeric props coerced via `Number`, misconfigured
+objects skipped)
+and `stepTrapSpikeRun` sweeps a marker back and forth along the rect's horizontal
+axis (bouncing at its edges), re-rolling a random speed every
+`time2change_speed` seconds under an injectable RNG; `isBoxTouchingTrapSpikeRun`
+is the lethal-contact probe the web client runs against the player box
+— engine-free, so the
+web renders it and a future server-side validation shares the same
+motion), `player/` (the
 `stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
 state machine (grab/hang/wall-jump/release) — split into `config.ts`
 (config, spawn, speed ceiling), `state.ts`, `step.ts`), `validation.ts`
