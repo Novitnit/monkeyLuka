@@ -14,7 +14,9 @@ import {
   PLAYER_INTERACTION_MESSAGE,
   interactionTileUnderFeet,
   isBoxInDeadZone,
+  isBoxOnMovePlatform,
   isBoxTouchingTrapSpikeRun,
+  supportPlayerOnMovePlatform,
   type PlayerInput,
 } from "@monkeyluka/shared";
 import { onDead } from "../death";
@@ -23,6 +25,10 @@ import { SNAP_DISTANCE } from "../player/player";
 import { syncRemotePlayers } from "../player/remote-players";
 import { syncOpenDoors } from "../door/door-open";
 import { updateTrapSpikeRunViews } from "../trap/trap-spike-run-render";
+import {
+  updateMovePlatformViews,
+  type MovePlatformView,
+} from "../trap/move-platform-render";
 import type { JungleRoom } from "../jungle-game";
 import { INPUT_INTERVAL_MS } from "./constants";
 import type { JungleSceneState } from "./state";
@@ -55,6 +61,15 @@ export function createSceneUpdate(
     if (state.trapSpikeRunViews) {
       updateTrapSpikeRunViews(state.trapSpikeRunViews, dt);
       state.trapSpikeRunDebug?.update(state.trapSpikeRunViews);
+    }
+
+    // Move platforms sweep the same way — world objects, never reported to
+    // the server (the player's support, not the slab, is what the reports
+    // describe). The debug lane/slab overlays follow them, so they redraw
+    // right after.
+    if (state.movePlatformViews) {
+      updateMovePlatformViews(state.movePlatformViews, dt);
+      state.movePlatformDebug?.update(state.movePlatformViews);
     }
 
     // Door state is authoritative and synced through the schema: reconcile
@@ -170,6 +185,68 @@ export function createSceneUpdate(
     const input: PlayerInput = { left, right, jump: jumpPressed };
     player.setInput(input);
     player.update(dt);
+
+    // --- Move-platform support: standing on a `move_platform` slab grants
+    // the feet ground support (grounded, feet on the top) but does NOT
+    // carry the player — the slab sweeps its patrol lane independently and
+    // the player must walk to follow it, falling like any ledge the moment
+    // the feet leave the slab. The probe runs on the client's own
+    // simulated position (freshest spot) against every slab, each frame;
+    // `vy >= 0` gates the catch so a jump press (negative vy) is never
+    // cancelled by the next support snap. A dead body never rides. ---
+    if (state.dead || player.physics.vy < 0) {
+      state.standingMovePlatformId = null;
+    } else if (state.movePlatformViews) {
+      const physics = player.physics;
+      let supported: MovePlatformView | null = null;
+      // Keep supporting the same slab (if the feet are still on it) —
+      // otherwise catch the first slab under the feet this frame.
+      for (const view of state.movePlatformViews) {
+        if (view.platform.id === state.standingMovePlatformId) {
+          supported = view;
+          break;
+        }
+      }
+      if (
+        supported === null ||
+        !isBoxOnMovePlatform(
+          supported.motion,
+          supported.platform,
+          physics.x,
+          physics.y,
+          DEFAULT_PLAYER_PHYSICS.width,
+          DEFAULT_PLAYER_PHYSICS.height,
+        )
+      ) {
+        supported = null;
+        for (const view of state.movePlatformViews) {
+          if (
+            isBoxOnMovePlatform(
+              view.motion,
+              view.platform,
+              physics.x,
+              physics.y,
+              DEFAULT_PLAYER_PHYSICS.width,
+              DEFAULT_PLAYER_PHYSICS.height,
+            )
+          ) {
+            supported = view;
+            break;
+          }
+        }
+      }
+      if (supported) {
+        supportPlayerOnMovePlatform(
+          physics,
+          supported.motion,
+          supported.platform,
+          DEFAULT_PLAYER_PHYSICS,
+        );
+        state.standingMovePlatformId = supported.platform.id;
+      } else {
+        state.standingMovePlatformId = null;
+      }
+    }
 
     // --- Death-question self-heal: a dead player with no question box up
     // (the first question never arrived, a wrong answer's 3s penalty just

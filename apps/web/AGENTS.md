@@ -242,6 +242,40 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   objectgroup, the `public/trap` assets dir, and the scene's trap layer,
   with its own `state.trapSaw*` fields and kill probe.
 
+  **`move_platform` (the first one that landed): a movable-platFORM, not a
+  hazard** — its own `move_platform` objectgroup (not the shared `trap`
+  group; the group name is the type, each object inside is one platform
+  whose rect is its patrol lane) — `src/game/trap/move-platform-render.ts`
+  renders each as a sprite from `Assets/trap/movePlatformF.png` (a
+  256×16 sheet = eight 32×16 cells in one row, all 8 in the looping
+  idle anim: the slab top is constant, a lower tooth
+  retracts/regrows in a symmetric 0–3/7–4 cycle — each frame is already
+  the full 32×16 footprint, `MOVE_PLATFORM_WIDTH`/`HEIGHT`, so it is
+  rendered unscaled, matching the shared probe), driven by `updateMovePlatformViews` → shared `stepMovePlatform`
+  every frame from `scene/update.ts` like the spike sweep (independent of
+  connection state). The sheet is preloaded via the same `public/trap`
+  symlink (`MOVE_PLATFORM_TEXTURE`, `registerMovePlatformAnimations`);
+  `JungleGameOptions.movePlatformTexture` swaps a caller-loaded sheet
+  (static frame 0). **Touching it does NOT kill — standing on it grants
+  ground support**: after `player.update(dt)`, update.ts probes the local
+  simulated box (`isBoxOnMovePlatform`, shared) and — while `vy >= 0` and
+  not dead — applies `supportPlayerOnMovePlatform`: grounded, feet snapped
+  to the slab top, vy zeroed, coyote refilled, BUT `x`/`vx` never touched:
+  the slab patrolling its lane does NOT carry the player, who must walk to
+  follow it (falling like any ledge the moment the feet leave the slab —
+  `state.standingMovePlatformId` tracks the slab currently supporting
+  them). The `vy >= 0` gate is what keeps a jump press from being
+  cancelled by the next support snap; the dead-zone/trap kill flow is
+  untouched. Debug (`NEXT_PUBLIC_DEBUG` or `options.movePlatformDebug`):
+  light-blue overlays drawing each platform's patrol LANE (faint) + its
+  current 32×16 slab (`createMovePlatformDebug`, redrawn each frame after
+  `updateMovePlatformViews`), runtime toggle `__jungleMovePlatformDebug`.
+  Shares `state.trapLayer` with the spike traps (created when EITHER type
+  exists), so slabs draw over the map art and under the player sprites.
+  No server state — the support is client-side like the spike kill; the
+  reports it produces are ordinary grounded positions, so nothing in the
+  anti-cheat changes.
+
 - **Player movement & netcode**: `src/game/player/player.ts` drives the
   monkey with the **shared physics** (`createPlayerState`/`stepPlayer` from
   `@monkeyluka/shared`; the grid comes from building `layer1` with

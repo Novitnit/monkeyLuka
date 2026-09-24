@@ -40,6 +40,23 @@ export interface JungleGameOptions {
    */
   trapSpikeRunTexture?: string;
   /**
+   * Draw the move-platform debug overlays (light blue: each platform's
+   * patrol lane + its current slab — the exact `isBoxOnMovePlatform`
+   * support surface). Defaults to the NEXT_PUBLIC_DEBUG flag — off unless
+   * it's "1"/"true" — overridable at runtime via
+   * `__jungleMovePlatformDebug.setEnabled(...)`.
+   */
+  movePlatformDebug?: boolean;
+  /**
+   * Sprite-sheet texture key for the move_platform movable platforms.
+   * Defaults to the built-in `movePlatformF.png` sheet (preloaded +
+   * animated by the scene itself); pass a different key to swap in a
+   * caller-loaded sheet instead (rendered as a static frame 0 — only the
+   * built-in sheet has its 16-frame row layout and idle animation
+   * registered).
+   */
+  movePlatformTexture?: string;
+  /**
    * Live on-screen control state for touch devices (see
    * `components/touch-controls.tsx` — the HUD writes here, the scene's
    * update loop merges it into the player input like the keyboard axes).

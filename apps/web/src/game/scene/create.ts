@@ -12,10 +12,12 @@
 import type Phaser from "phaser";
 import {
   COLLISION_LAYER_NAME,
+  MOVE_PLATFORM_OBJECT_GROUP_NAME,
   ROOM_OBJECT_GROUP_NAME,
   TRAP_OBJECT_GROUP_NAME,
   buildDoorEntities,
   buildInteractionGrid,
+  buildMovePlatforms,
   buildTileGrid,
   buildTrapSpikeRuns,
   groupRoomObjectsByName,
@@ -38,6 +40,12 @@ import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
 import { createDoorDebug } from "../door/door-debug";
 import { createQuestBox } from "../quest/quest-box";
+import {
+  MOVE_PLATFORM_TEXTURE,
+  createMovePlatformDebug,
+  createMovePlatformView,
+  registerMovePlatformAnimations,
+} from "../trap/move-platform-render";
 import {
   TRAP_SPIKE_RUN_TEXTURE,
   createTrapSpikeRunDebug,
@@ -83,6 +91,11 @@ export function createSceneCreate(
     // The movable-trap spike sheet (served via the `public/trap` symlink),
     // preloaded so trap views can be built from it once the world loads.
     this.load.image(TRAP_SPIKE_RUN_TEXTURE, `${TRAP_DIR}/Trap_Spike_Run.png`);
+    // The move-platform sheet (same `public/trap` symlink): a 256×16 strip
+    // of sixteen 16×16 slab frames, registered as its looping idle
+    // animation by `registerMovePlatformAnimations` (create.ts, right
+    // before the views are built).
+    this.load.image(MOVE_PLATFORM_TEXTURE, `${TRAP_DIR}/movePlatformF.png`);
     this.load.once(phaser.Loader.Events.COMPLETE, () => {
       void (async () => {
         try {
@@ -183,21 +196,37 @@ export function createSceneCreate(
           // views are built); pass options.trapSpikeRunTexture to swap in
           // a different caller-loaded sheet.
           registerTrapSpikeRunAnimations(this);
+          registerMovePlatformAnimations(this);
           const trapObjects =
             map.objectGroups.find(
               (group) => group.name === TRAP_OBJECT_GROUP_NAME,
             )?.objects ?? [];
           const trapSpikeRuns = buildTrapSpikeRuns(trapObjects);
-          if (trapSpikeRuns.length > 0) {
+          // Movable platforms: their OWN objectgroup (`move_platform`) —
+          // the group name is the type, each object's rect is the patrol
+          // lane its slab sweeps. Unlike the lethal spike markers, a slab
+          // is a SUPPORT surface: the update loop grants the player
+          // standing on it ground support, but never carries the player
+          // along (the player must walk — see isBoxOnMovePlatform /
+          // supportPlayerOnMovePlatform in @monkeyluka/shared). Both trap
+          // types share the scene's single trap layer.
+          const movePlatformObjects =
+            map.objectGroups.find(
+              (group) => group.name === MOVE_PLATFORM_OBJECT_GROUP_NAME,
+            )?.objects ?? [];
+          const movePlatforms = buildMovePlatforms(movePlatformObjects);
+          if (trapSpikeRuns.length > 0 || movePlatforms.length > 0) {
             const trapLayer = this.add.container(
               render.rooms[0].x,
               render.rooms[0].y,
             );
             trapLayer.setScale(render.scale);
-            state.trapSpikeRuns = trapSpikeRuns;
             state.trapLayer = trapLayer;
+          }
+          if (trapSpikeRuns.length > 0) {
+            state.trapSpikeRuns = trapSpikeRuns;
             const views = trapSpikeRuns.map((trapSpikeRun) =>
-              createTrapSpikeRunView(this, trapSpikeRun, trapLayer, {
+              createTrapSpikeRunView(this, trapSpikeRun, state.trapLayer!, {
                 texture: options.trapSpikeRunTexture ?? TRAP_SPIKE_RUN_TEXTURE,
               }),
             );
@@ -209,10 +238,33 @@ export function createSceneCreate(
               const trapSpikeRunDebug = createTrapSpikeRunDebug(
                 this,
                 views,
-                trapLayer,
+                state.trapLayer!,
               );
               setDebugHandle("__jungleTrapSpikeRunDebug", trapSpikeRunDebug);
               state.trapSpikeRunDebug = trapSpikeRunDebug;
+            }
+          }
+          if (movePlatforms.length > 0) {
+            state.movePlatforms = movePlatforms;
+            const views = movePlatforms.map((movePlatform) =>
+              createMovePlatformView(this, movePlatform, state.trapLayer!, {
+                texture: options.movePlatformTexture ?? MOVE_PLATFORM_TEXTURE,
+              }),
+            );
+            state.movePlatformViews = views;
+            // Debug (NEXT_PUBLIC_DEBUG): each platform's patrol LANE
+            // (faint outline) + its CURRENT slab box — the exact
+            // `isBoxOnMovePlatform` support surface, so a map author sees
+            // where the player can stand and where the slab will take
+            // them; redrawn every frame as the slab sweeps (update.ts).
+            if (options.movePlatformDebug ?? isDebugEnabled()) {
+              const movePlatformDebug = createMovePlatformDebug(
+                this,
+                views,
+                state.trapLayer!,
+              );
+              setDebugHandle("__jungleMovePlatformDebug", movePlatformDebug);
+              state.movePlatformDebug = movePlatformDebug;
             }
           }
 

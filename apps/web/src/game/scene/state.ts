@@ -9,6 +9,7 @@ import type Phaser from "phaser";
 import type {
   DoorLinkGroup,
   InteractionGrid,
+  MovePlatformEntity,
   SolidGrid,
   TrapSpikeRunEntity,
 } from "@monkeyluka/shared";
@@ -16,6 +17,10 @@ import type { CollisionDebug } from "../collision/collision-debug";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
 import type { TouchControlsState } from "../touch/touch-input";
+import type {
+  MovePlatformDebug,
+  MovePlatformView,
+} from "../trap/move-platform-render";
 import type {
   TrapSpikeRunDebug,
   TrapSpikeRunView,
@@ -53,7 +58,7 @@ export interface JungleSceneState {
    * Shared by every trap type.
    */
   trapLayer: Phaser.GameObjects.Container | null;
-  /** One view per trap entity; advanced by `updateTrapSpikeRunViews` each frame. */
+  /** One view per spike trap; advanced by `updateTrapSpikeRunViews` each frame. */
   trapSpikeRunViews: TrapSpikeRunView[] | null;
   /**
    * Debug overlay drawing each trap's red attack-radius box (the exact
@@ -62,6 +67,28 @@ export interface JungleSceneState {
    * off.
    */
   trapSpikeRunDebug: TrapSpikeRunDebug | null;
+  /**
+   * Movable platforms parsed from the map's `move_platform` objectgroup
+   * (see move-platform.ts in @monkeyluka/shared): patrol lanes whose slab
+   * grants ground support without carrying the player. Null until the map
+   * finishes loading.
+   */
+  movePlatforms: MovePlatformEntity[] | null;
+  /** One view per platform; advanced by `updateMovePlatformViews` each frame. */
+  movePlatformViews: MovePlatformView[] | null;
+  /**
+   * Debug overlay drawing each platform's patrol lane + current slab (the
+   * exact `isBoxOnMovePlatform` support surface), gated by
+   * NEXT_PUBLIC_DEBUG like the trap overlay. Null when debug is off.
+   */
+  movePlatformDebug: MovePlatformDebug | null;
+  /**
+   * The `move_platform` slab the local player currently stands on (by
+   * entity id), null when airborne/grounded on tiles. Support ends the
+   * moment the feet leave the slab — the platform never carries the
+   * player (see update.ts).
+   */
+  standingMovePlatformId: number | null;
   /**
    * The collision-debug overlay handle (always created; visibility gated by
    * the NEXT_PUBLIC_DEBUG flag). The door-open sync drives it via
@@ -152,6 +179,10 @@ export function createJungleSceneState(): JungleSceneState {
     trapLayer: null,
     trapSpikeRunViews: null,
     trapSpikeRunDebug: null,
+    movePlatforms: null,
+    movePlatformViews: null,
+    movePlatformDebug: null,
+    standingMovePlatformId: null,
     collisionDebug: null,
     openDoors: new Set(),
     playerLayer: null,

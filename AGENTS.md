@@ -154,6 +154,15 @@ fine, and Bun is required for `.ts` execution anyway.
   covered.
 - Keep secrets out of source; use `.env` files (gitignored, `.env.example`
   can be committed).
+- **After changing shared constants both processes rely on (e.g. `PLAYER_SPAWN`,
+  anti-cheat tuning), restart the Colyseus server — don't trust the watch.**
+  `dev:server` runs `bun run --watch`, which misses atomic saves (editors write
+  a temp file then rename it), so the server can keep the old module: web and
+  server then disagree on the value and the respawn/checkpoint flow silently
+  breaks (client teleports to its spawn, server re-baselines elsewhere, every
+  report is a teleport violation). Restart `bun run dev` and reload the browser
+  tab; quick check: connect a fresh client and read its spawn position. See
+  `discoveries/stale-colyseus-dev-server-respawn-wrong-position.md`.
 
 Workspace-specific gotchas (Next.js typegen / LAN dev, Colyseus internals,
 `transpilePackages`) live in the respective workspace `AGENTS.md`. Non-obvious
@@ -302,6 +311,42 @@ kill to `onDead` with cause `"trap"` — exactly the dead-zone flow
  only
 — no server state; the shared motion model is the seam for future
 validation.
+**Moving platforms (`move_platform`, the first non-lethal trap type)**: its
+OWN objectgroup named `move_platform` (not the shared `trap` group — the
+group name IS the type and every object inside it is one platform
+instance; the real map's object is unnamed, its rect the patrol lane):
+`buildMovePlatforms` in `packages/shared/src/physics/move-platform.ts`
+(optional `speed` prop, default 45 px/s — below the 55 px/s run speed, so
+a slab that never carries the player can always be walked onto/followed;
+missing `speed` → default, explicit junk speed → object skipped) and
+`stepMovePlatform` sweeps a fixed 32×16 slab (`MOVE_PLATFORM_WIDTH`/
+`HEIGHT`) back and forth along the lane, bouncing at its edges at a
+constant speed (no random re-roll — a platform must be predictable). The
+web client renders each slab from `Assets/trap/movePlatformF.png` (a
+256×16 sheet of eight 32×16 frames in one row, all 8 in the looping
+idle — the slab top is constant while a lower tooth retracts/regrows in
+a symmetric 0–3/7–4 cycle; each frame is already the full 32×16
+footprint, so no scaling; see
+`apps/web/src/game/trap/move-platform-render.ts`) and **standing on the
+slab grants ground support WITHOUT carrying**: every frame, after the
+player step, `scene/update.ts` probes the local simulated box with the
+shared `isBoxOnMovePlatform` (feet at/within 6px above the top — sized
+above a max-fall frame so a falling player never tunnels; feet below the
+top never catch, so the slab never hoists a player under it — and
+horizontal overlap of the 32×16 surface) and, while `vy >= 0` (the gate
+that stops a jump press being cancelled by the next support snap) and not
+dead, applies `supportPlayerOnMovePlatform`: grounded, feet snapped onto
+the top, vy zeroed, coyote refilled — but `x`/`vx` are deliberately never
+touched: the player must walk manually and falls like any ledge the
+moment the slab slides out from under the feet (`state.standingMovePlatformId`
+tracks which slab currently supports them). It is support, not a kill:
+the dead-zone/trap `onDead` flow is untouched, and because the reports it
+produces are ordinary grounded positions nothing in the server's
+anti-cheat changes (the slab itself is client-side, like the spike traps).
+The debug overlay (NEXT_PUBLIC_DEBUG, `__jungleMovePlatformDebug`) draws
+each platform's patrol lane + its current 32×16 slab in light blue; the
+sheet is served via the `public/trap` symlink and shares the scene's trap
+layer (created when either trap type exists) with the spike run.
 **Door entities**: the four gids 375/376/401/402 placed as a
 2×2 block (375,376 on top, 401,402 below) form one **door** Entity with
 two states (open/closed) — `buildDoorEntities` in

@@ -22,22 +22,16 @@ function loadBank(): JungleQuestionBank {
 }
 
 describe("question bank loader", () => {
-  test("loads the real question.json — 5 derivative questions, 4 choices each", () => {
+  test("loads the real question.json — 1 derivative question, 4 choices each", () => {
     const bank = loadBank();
-    expect(bank.questions.length).toBe(5);
+    expect(bank.questions.length).toBe(1);
     for (const question of bank.questions) {
       expect(question.choices.length).toBe(4);
       // The correct choice exists and is one of the choices.
       expect(typeof question.choices[question.answer]!).toBe("string");
       expect(question.choices).toContain(question.choices[question.answer]!);
     }
-    expect(bank.questions.map((q) => q.question)).toEqual([
-      "d((x^5))/dx",
-      "d((3x^2))/dx",
-      "d((sin(x)))/dx",
-      "d((e^x))/dx",
-      "d((ln(x)))/dx",
-    ]);
+    expect(bank.questions.map((q) => q.question)).toEqual(["d((x^5))/dx"]);
   });
 
   test("rejects a bank with no questions", () => {

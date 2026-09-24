@@ -23,6 +23,14 @@
  *                       objects grouped by name and classified against the
  *                       tile entities (showquest interaction vs door) so a
  *                       signpost knows which doors it gates
+ * - `move-platform.ts` – movable platforms: the `move_platform`
+ *                       objectgroup's objects (patrol lane + optional
+ *                       `speed` prop) become `MovePlatformEntity`s;
+ *                       `stepMovePlatform` sweeps the slab back and forth
+ *                       inside the lane at a constant speed, and
+ *                       `isBoxOnMovePlatform` / `supportPlayerOnMovePlatform`
+ *                       give a player standing on the slab ground support
+ *                       WITHOUT carrying them (the player must walk)
  * - `trap-spike-run.ts` – movable traps: the `trap` objectgroup's
  *                       `Trap_Spike_Run` objects (patrol rect +
  *                       speedMin/speedMax/time2change_speed props) become
@@ -97,6 +105,7 @@ export * from "./tiles";
 export * from "./interaction";
 export * from "./door";
 export * from "./door-links";
+export * from "./move-platform";
 export * from "./trap-spike-run";
 export * from "./collision";
 export * from "./player";

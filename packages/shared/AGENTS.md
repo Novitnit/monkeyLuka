@@ -96,7 +96,25 @@ axis (bouncing at its edges), re-rolling a random speed every
 is the lethal-contact probe the web client runs against the player box
 — engine-free, so the
 web renders it and a future server-side validation shares the same
-motion), `player/` (the
+motion), `move-platform.ts` (the first non-lethal trap type — the `move_platform`
+objectgroup, its OWN group (not the shared `trap` group): the group name IS
+the type and every object inside is one platform instance (the real map's
+object is unnamed, `name: ""`), so `buildMovePlatforms` filters by nothing
+but the rect; each object's rectangle is the patrol LANE and an optional
+`speed` prop tunes the constant sweep speed (missing →
+`MOVE_PLATFORM_DEFAULT_SPEED = 45`, deliberately below the player's 55 px/s
+run speed — an explicit junk speed skips the object). `stepMovePlatform`
+pushes the slab along the lane, bouncing at its edges; the slab is a fixed
+32×16 box (`MOVE_PLATFORM_WIDTH`/`HEIGHT`); `isBoxOnMovePlatform` is the
+feet-on-the-slab probe (feet at/above the top within `MOVE_PLATFORM_RIDE_TOLERANCE`
+(6px, sized above a max-fall frame; feet BELOW the top never catch so the
+slab never hoists a player under it), horizontally overlapping the 32×16
+surface), and `supportPlayerOnMovePlatform` applies the support it grants:
+grounded + feet snapped onto the top + vy zeroed + coyote refilled — but
+NEVER touching x/vx: the platform does not carry, the player must walk, and
+when the slab slides out from under the feet support ends and the player
+falls. The web update loop gates the support on `vy >= 0` so a jump press
+is never cancelled by the next support snap, `player/` (the
 `stepPlayer` sim — ground/coyote/buffered jumps plus the **wall cling**
 state machine (grab/hang/wall-jump/release) — split into `config.ts`
 (config, spawn, speed ceiling), `state.ts`, `step.ts`), `validation.ts`

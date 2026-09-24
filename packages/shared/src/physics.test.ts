@@ -29,9 +29,11 @@ import {
   TILE_STAIRS_MIRROR,
   buildDoorEntities,
   buildInteractionGrid,
+  buildMovePlatforms,
   buildTileGrid,
   buildTrapSpikeRuns,
   clearDoorFromGrid,
+  createMovePlatformMotion,
   createPlayerState,
   createTrapSpikeRunMotion,
   doorKey,
@@ -41,6 +43,7 @@ import {
   interactionActionForGid,
   interactionTileUnderFeet,
   isBoxInDeadZone,
+  isBoxOnMovePlatform,
   isBoxSolid,
   isBoxTouchingTrapSpikeRun,
   isDoorTileGid,
@@ -48,10 +51,16 @@ import {
   isPointSolid,
   isTrapSpikeRunObject,
   maxPlayerSpeed,
+  movePlatformSurfaceTop,
   probeInteractionTile,
+  stepMovePlatform,
   stepPlayer,
   stepTrapSpikeRun,
+  supportPlayerOnMovePlatform,
   validatePositionReport,
+  MOVE_PLATFORM_DEFAULT_SPEED,
+  MOVE_PLATFORM_RIDE_TOLERANCE,
+  MOVE_PLATFORM_WIDTH,
   type CollisionLayerData,
   type PlayerInput,
   type RoomObject,
@@ -2650,5 +2659,295 @@ describe("Trap_Spike_Run entities (patrol)", () => {
         config.height,
       ),
     ).toBe(false);
+  });
+});
+describe("move_platform entities (support sheet, no carry)", () => {
+  // Mirrors the real map's `move_platform` objectgroup: the object itself
+  // is unnamed (`name: ""`) — inside its own group the GROUP name is the
+  // type, so the builder recognizes every object in it.
+  const movePlatformObj = (
+    overrides: Partial<TrapObjectAnnotation> = {},
+  ): TrapObjectAnnotation => ({
+    id: 21,
+    name: "",
+    x: 1504,
+    y: 144,
+    width: 288,
+    height: 16,
+    properties: [],
+    ...overrides,
+  });
+
+  test("buildMovePlatforms treats every object in the group as a platform (unnamed instances included)", () => {
+    const platforms = buildMovePlatforms([
+      movePlatformObj(),
+      movePlatformObj({ id: 22 }),
+    ]);
+    expect(platforms).toHaveLength(2);
+    expect(platforms[0]).toMatchObject({
+      id: 21,
+      x: 1504,
+      y: 144,
+      width: 288,
+      height: 16,
+      speed: MOVE_PLATFORM_DEFAULT_SPEED, // no `speed` prop → default
+    });
+    expect(platforms[1]!.id).toBe(22);
+  });
+
+  test("coerces a string `speed` and skips misconfigured objects", () => {
+    const platforms = buildMovePlatforms([
+      movePlatformObj({
+        id: 1,
+        properties: [{ name: "speed", value: "80" }],
+      }),
+      movePlatformObj({ id: 2, properties: [{ name: "speed", value: 0 }] }),
+      movePlatformObj({ id: 3, properties: [{ name: "speed", value: -10 }] }),
+      movePlatformObj({ id: 4, properties: [{ name: "speed", value: "nope" }] }),
+      movePlatformObj({ id: 5, width: 0 }), // degenerate rect
+      movePlatformObj({ id: 6, height: -1 }),
+    ]);
+    expect(platforms).toHaveLength(1);
+    expect(platforms[0]).toMatchObject({ id: 1, speed: 80 });
+  });
+
+  test("motion starts centered in the lane, moving right at the constant speed", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    expect(motion.x).toBe(platform!.x + platform!.width / 2);
+    expect(motion.y).toBe(platform!.y + platform!.height / 2);
+    expect(motion.vx).toBe(platform!.speed);
+  });
+
+  test("sweeps the lane at a constant speed, bouncing at the edges", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    const dt = 1 / 60;
+    let guard = 0;
+    while (motion.x < platform!.x + platform!.width && guard++ < 100_000) {
+      stepMovePlatform(motion, platform!, dt);
+    }
+    expect(guard).toBeLessThan(100_000);
+    expect(motion.x).toBe(platform!.x + platform!.width);
+    expect(motion.vx).toBeLessThan(0); // bounced back left
+    guard = 0;
+    while (motion.x > platform!.x && guard++ < 100_000) {
+      stepMovePlatform(motion, platform!, dt);
+    }
+    expect(guard).toBeLessThan(100_000);
+    expect(motion.x).toBe(platform!.x);
+    expect(motion.vx).toBeGreaterThan(0); // bounced back right
+  });
+
+  test("isBoxOnMovePlatform: feet on the slab top catch; below/side/too-high do not", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    const half = MOVE_PLATFORM_WIDTH / 2;
+    const feetOnTop = movePlatformSurfaceTop(motion, platform!) - config.height / 2;
+    // Feet exactly on the top → supported.
+    expect(
+      isBoxOnMovePlatform(
+        motion,
+        platform!,
+        motion.x,
+        feetOnTop,
+        config.width,
+        config.height,
+      ),
+    ).toBe(true);
+    // A hair above the catch band (already rising past it) → no support.
+    expect(
+      isBoxOnMovePlatform(
+        motion,
+        platform!,
+        motion.x,
+        feetOnTop - MOVE_PLATFORM_RIDE_TOLERANCE - 0.5,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
+    // Feet below the top (a player walking under the slab) → never hoisted.
+    expect(
+      isBoxOnMovePlatform(
+        motion,
+        platform!,
+        motion.x,
+        platform!.y + config.height + 2,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
+    // Horizontally past the slab's edge → no overlap.
+    expect(
+      isBoxOnMovePlatform(
+        motion,
+        platform!,
+        motion.x + half + config.width / 2 + 0.5,
+        feetOnTop,
+        config.width,
+        config.height,
+      ),
+    ).toBe(false);
+  });
+
+  test("supportPlayerOnMovePlatform grounds the player on the slab WITHOUT carrying them", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    const state = createPlayerState(config);
+    state.x = motion.x - 40; // approaching from the left
+    state.y = movePlatformSurfaceTop(motion, platform!) - config.height / 2;
+    state.vx = 55; // walking right
+    const xBefore = state.x;
+    const vxBefore = state.vx;
+    supportPlayerOnMovePlatform(state, motion, platform!, config);
+    // Grounded with the feet snapped onto the top, vertical drift zeroed,
+    // coyote refilled so a buffered jump still fires.
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBe(
+      movePlatformSurfaceTop(motion, platform!) - config.height / 2,
+    );
+    expect(state.vy).toBe(0);
+    expect(state.coyoteTime).toBe(config.coyoteTime);
+    // The crux: x and vx are untouched — the slab does NOT pull/push the
+    // player; the player stays where its own walk put it.
+    expect(state.x).toBe(xBefore);
+    expect(state.vx).toBe(vxBefore);
+  });
+
+  test("a standing player keeps support over an empty grid and falls when the slab slides out from under them (no carry)", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    // A tall, wide EMPTY world containing the patrol lane: no tiles at
+    // all — the slab is the only support.
+    const grid = emptyGrid(140, 12);
+    const state = createPlayerState(config);
+    state.x = motion.x;
+    state.y = movePlatformSurfaceTop(motion, platform!) - config.height / 2;
+
+    // The support flow mirrors scene/update.ts: step the slab, step the
+    // player, then (only while not rising AND the feet still overlap the
+    // slab) apply the support.
+    const support = () => {
+      stepMovePlatform(motion, platform!, STEP);
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (
+        state.vy >= 0 &&
+        isBoxOnMovePlatform(
+          motion,
+          platform!,
+          state.x,
+          state.y,
+          config.width,
+          config.height,
+        )
+      ) {
+        supportPlayerOnMovePlatform(state, motion, platform!, config);
+      }
+    };
+
+    // Hold still: the slab slides away, support lasts only while the feet
+    // overlap it, then the player drops — and nothing re-supports them.
+    // (They fall to the world's invisible floor much later; the window in
+    // between proves the slab, not any carry, was holding them up.)
+    let supportedFrames = 0;
+    let airborneFrames = 0;
+    for (let frame = 0; frame < 120; frame++) {
+      support();
+      if (state.grounded) supportedFrames++;
+      else airborneFrames++;
+    }
+    expect(supportedFrames).toBeGreaterThan(0); // it did support
+    expect(airborneFrames).toBeGreaterThan(0); // and fell when the slab left
+    expect(supportedFrames).toBeLessThan(120); // but not FOREVER — not glued
+  });
+
+  test("walking right keeps the player aboard the slab; support never carries", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    const grid = emptyGrid(140, 12); // tall, wide empty world containing the lane
+    const state = createPlayerState(config);
+    state.x = motion.x;
+    state.y = movePlatformSurfaceTop(motion, platform!) - config.height / 2;
+
+    const support = () => {
+      stepMovePlatform(motion, platform!, STEP);
+      stepPlayer(state, { left: false, right: true, jump: false }, grid, STEP, config);
+      if (
+        state.vy >= 0 &&
+        isBoxOnMovePlatform(
+          motion,
+          platform!,
+          state.x,
+          state.y,
+          config.width,
+          config.height,
+        )
+      ) {
+        supportPlayerOnMovePlatform(state, motion, platform!, config);
+      }
+    };
+
+    // The player walks right (run speed 55 > slab 45) and overtakes the
+    // slab slowly, so support holds for a meaningful stretch — thanks to
+    // the player's own walk, not any carry (the slab can't keep the feet
+    // under it once they've outrun it).
+    let supportedFrames = 0;
+    const xStart = state.x;
+    for (let frame = 0; frame < 120; frame++) {
+      support();
+      if (state.grounded) supportedFrames++;
+    }
+    expect(supportedFrames).toBeGreaterThan(60);
+    // The player moved under its own steam (way more than the slab moved it
+    // — which is zero).
+    expect(state.x - xStart).toBeGreaterThan(platform!.speed * 2);
+  });
+
+  test("a jump press launches the player off the slab and the vy>=0 gate stops re-catch", () => {
+    const [platform] = buildMovePlatforms([movePlatformObj()]);
+    const motion = createMovePlatformMotion(platform!);
+    const grid = emptyGrid(140, 12); // tall, wide empty world containing the lane
+    const state = createPlayerState(config);
+    state.x = motion.x;
+    state.y = movePlatformSurfaceTop(motion, platform!) - config.height / 2;
+
+    const support = () => {
+      stepMovePlatform(motion, platform!, STEP);
+      stepPlayer(state, noInput, grid, STEP, config);
+      if (
+        state.vy >= 0 &&
+        isBoxOnMovePlatform(
+          motion,
+          platform!,
+          state.x,
+          state.y,
+          config.width,
+          config.height,
+        )
+      ) {
+        supportPlayerOnMovePlatform(state, motion, platform!, config);
+      }
+    };
+
+    // Settle onto the slab across a few frames.
+    for (let i = 0; i < 10; i++) {
+      support();
+      expect(state.grounded).toBe(true);
+    }
+    // A buffered jump press fires off the slab (coyote is held at full
+    // while supported)... 
+    stepMovePlatform(motion, platform!, STEP);
+    stepPlayer(state, { left: false, right: false, jump: true }, grid, STEP, config);
+    expect(state.vy).toBeLessThan(0);
+    expect(state.grounded).toBe(false);
+    // ...and while rising, the vy >= 0 gate keeps the support off — the
+    // slab never hoists a player back that just jumped.
+    stepMovePlatform(motion, platform!, STEP);
+    stepPlayer(state, noInput, grid, STEP, config);
+    if (state.vy >= 0) {
+      supportPlayerOnMovePlatform(state, motion, platform!, config);
+    }
+    expect(state.vy).toBeLessThan(0);
+    expect(state.grounded).toBe(false);
   });
 });

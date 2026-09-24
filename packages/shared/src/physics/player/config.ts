@@ -43,7 +43,11 @@ export interface PlayerPhysicsConfig {
 }
 
 /** Where the player spawns (map pixels, AABB center). */
-export const PLAYER_SPAWN = { x: (3*16)+8, y: (12*16) } as const;
+export const PLAYER_SPAWN = { x: (4*16)+8, y: (11*16) } as const;
+// export const PLAYER_SPAWN = { x: (33*16)+8, y: (9*16) } as const;
+// export const PLAYER_SPAWN = { x: (59*16)+8, y: (1*16) } as const;
+// export const PLAYER_SPAWN = { x: (59*16)+8, y: (13*16) } as const;
+// export const PLAYER_SPAWN = { x: (90*16)+8, y: (8*16) } as const;
 
 /**
  * Tuning for the jungle monkey. Chosen so the platforms are reachable: the
