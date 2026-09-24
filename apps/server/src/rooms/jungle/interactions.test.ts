@@ -1,14 +1,20 @@
 /**
- * Unit tests for the showquest interaction handler (`interactions.ts`): the
- * room's E-key interaction must send exactly one shuffled question per press,
- * reserve the pending-quest slot (so a repeat press while the box is up sends
- * nothing), track the correct index server-side — the client only ever
- * sees the plain question + shuffled choice strings — record which
- * interaction tile asked (so a correct answer completes THAT signpost) and
- * refuse to send again once the tile is completed.
+ * Unit tests for the interaction handlers (`interactions.ts`): `showquest`
+ * (the room's E-key signpost must send exactly one shuffled question per
+ * press, reserve the pending-quest slot — so a repeat press while the box
+ * is up sends nothing — track the correct index server-side — the client
+ * only ever sees the plain question + shuffled choice strings — record
+ * which interaction tile asked, so a correct answer completes THAT signpost
+ * and refuse to send again once the tile is completed) and `finish` (the
+ * 404 endgame tile must end the run exactly once, handing the actual
+ * stamping + persistence to the room via `ctx.finish`).
  */
 import { describe, expect, test } from "bun:test";
-import { QUEST_QUESTION_MESSAGE, TILE_INTERACTION } from "@monkeyluka/shared";
+import {
+  QUEST_QUESTION_MESSAGE,
+  TILE_ENDGAME,
+  TILE_INTERACTION,
+} from "@monkeyluka/shared";
 import {
   parseJungleQuestions,
   type JungleQuestionBank,
@@ -27,6 +33,7 @@ interface Harness {
   ctx: InteractionContext;
   sent: Array<{ type: string; payload: unknown }>;
   pending: () => QuestPending | null;
+  finished: () => boolean;
 }
 
 /** A fake room-shaped context: send captures messages, setQuestPending mutates. */
@@ -34,12 +41,15 @@ function makeCtx(
   initialPending: QuestPending | null = null,
   tile: { tx: number; ty: number } = { tx: 17, ty: 11 },
   completed = false,
+  alreadyFinished = false,
 ): Harness {
   let pending = initialPending;
+  let finished = alreadyFinished;
   const sent: Array<{ type: string; payload: unknown }> = [];
   return {
     sent,
     pending: () => pending,
+    finished: () => finished,
     ctx: {
       sessionId: "tester",
       name: "Tester",
@@ -51,6 +61,10 @@ function makeCtx(
       },
       tile,
       completed,
+      finished,
+      finish: () => {
+        finished = true;
+      },
     },
   };
 }
@@ -104,5 +118,44 @@ describe("showquest interaction handler", () => {
     const { ctx, sent } = makeCtx(null, { tx: 17, ty: 11 }, true);
     runInteraction(TILE_INTERACTION, ctx);
     expect(sent.length).toBe(0);
+  });
+});
+
+describe("finish interaction handler", () => {
+  test("ends the run exactly once and hands the rest to the room", () => {
+    // The 404 endgame tile: the press was already validated by the room's
+    // feet probe, so the handler just flips the finished flag (the room's
+    // `finish` closure stamps `PlayerInfo.finishedAt` + persists the
+    // result). It sends nothing itself.
+    const harness = makeCtx(null, { tx: 7, ty: 11 });
+    runInteraction(TILE_ENDGAME, harness.ctx);
+    expect(harness.finished()).toBe(true);
+    expect(harness.sent.length).toBe(0);
+
+    // A repeat press (or a forged one) after finishing is a silent no-op —
+    // the run is not re-ended and the room's finish closure is not re-run.
+    const second = makeCtx(null, { tx: 7, ty: 11 }, false, true);
+    runInteraction(TILE_ENDGAME, second.ctx);
+    expect(second.finished()).toBe(true);
+    expect(second.sent.length).toBe(0);
+  });
+
+  test("finishing is not gated by a pending question slot", () => {
+    // Unlike showquest, a finish press is not dropped while an unanswered
+    // question is out: an unfinished quest doesn't block ending the run.
+    const harness = makeCtx({
+      kind: "interaction",
+      correctIndex: 2,
+      choiceCount: 4,
+      tx: 17,
+      ty: 11,
+    });
+    runInteraction(TILE_ENDGAME, harness.ctx);
+    expect(harness.finished()).toBe(true);
+
+    // And it never touches the pending slot (the room's grading keeps it).
+    const resolved = harness.pending();
+    expect(resolved).not.toBeNull();
+    expect(resolved!.kind).toBe("interaction");
   });
 });

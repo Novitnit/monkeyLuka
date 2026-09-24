@@ -12,6 +12,7 @@ import { schema, t } from "@colyseus/schema";
 export * from "./physics";
 export * from "./math";
 export * from "./quest";
+export * from "./finish";
 
 export const APP_NAME = "monkeyLuka";
 
@@ -49,6 +50,12 @@ export const PlayerInfo = schema({
   clinging: t.boolean(),
   facing: t.number(),
   joinedAt: t.number(),
+  // 0 until the player reaches the 404 endgame interaction tile, then the
+  // server wall-clock finish moment (set by the room in its "finish"
+  // action handler). The client freezes its run timer at this moment to
+  // display the completion time, and the room records the same moment to
+  // its SQLite run-results store. Only the server ever writes it.
+  finishedAt: t.number(),
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;
 

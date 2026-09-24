@@ -14,6 +14,7 @@ import type {
   TrapSpikeRunEntity,
 } from "@monkeyluka/shared";
 import type { CollisionDebug } from "../collision/collision-debug";
+import type { FinishOverlay } from "../finish/finish-overlay";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
 import type { TouchControlsState } from "../touch/touch-input";
@@ -141,6 +142,30 @@ export interface JungleSceneState {
    */
   runTimer: { text: Phaser.GameObjects.Text; startedAt: number } | null;
   /**
+   * True once the player reached the 404 endgame tile and the server
+   * stamped `PlayerInfo.finishedAt` (see update.ts). Freezes movement,
+   * jump, E and R input exactly like `questOpen`/`dead`, keeps the traps
+   * and pits from killing a finished player, and shows the completion
+   * overlay once. The run is over — the player stays where they finished
+   * until they leave.
+   */
+  finished: boolean;
+  /**
+   * The endgame completion modal (see finish/finish-overlay.ts): hidden
+   * until the finish, then shows the run's completion time. Created once
+   * at world build; a reconnected finished player re-shows it (via the
+   * `finished` transition) from the same synced `finishedAt`.
+   */
+  finishOverlay: FinishOverlay | null;
+  /**
+   * Callback fired exactly once on the finish transition, the same moment
+   * `finishOverlay` shows (the room stamped `PlayerInfo.finishedAt`). Set
+   * from `JungleGameOptions.onFinish` at world build so the React layer
+   * (play-screen.tsx) can react to the endgame — e.g. offer a "return to
+   * leaderboard" button over the canvas. Null when no callback was given.
+   */
+  onFinish: (() => void) | null;
+  /**
    * True from the moment the player dies (dead-zone pit touch, see onDead
    * in death.ts) until its death question is answered correctly. Freezes
    * movement input like `questOpen` (and gates the E/R keys and the pit
@@ -205,6 +230,9 @@ export function createJungleSceneState(): JungleSceneState {
     touchControls: null,
     questOpen: false,
     runTimer: null,
+    finished: false,
+    finishOverlay: null,
+    onFinish: null,
     dead: false,
     deathRequestAt: 0,
     connectionWasDown: false,

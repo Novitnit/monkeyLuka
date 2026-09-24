@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   JungleState,
   MAX_PLAYER_NAME_LENGTH,
@@ -22,6 +23,7 @@ import { SiteHeader } from "@/components/site-header";
 import { NameDialog } from "@/components/name-dialog";
 import { PlayMenu } from "@/components/play-menu";
 import { TouchControls } from "@/components/touch-controls";
+import { IconTrophy } from "@/components/icons";
 
 type Phase = "idle" | "naming" | "joining" | "resuming" | "playing";
 
@@ -55,6 +57,11 @@ export function PlayScreen() {
   const [booted, setBooted] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // True from the moment the game's finish transition fires (the room
+  // stamped `finishedAt`; see JungleGameOptions.onFinish) — raises the
+  // "View leaderboard" button over the canvas next to the completion
+  // overlay. Never reset for a live session: the run is over for good.
+  const [finished, setFinished] = useState(false);
 
   const roomRef = useRef<JungleRoom | null>(null);
   const gameRef = useRef<
@@ -83,12 +90,16 @@ export function PlayScreen() {
     setBooted(true);
   }, []);
 
+  // Client-side navigation for the post-finish "View leaderboard" CTA.
+  const router = useRouter();
+
   // Boot Phaser once a room has been joined and its mount div exists.
   useEffect(() => {
     if (phase !== "playing" || !mountRef.current || !roomRef.current) return;
     let disposed = false;
     void createJungleGame(mountRef.current, roomRef.current, {
       touchControls: touchControlsRef.current,
+      onFinish: () => setFinished(true),
     }).then((game) => {
       if (disposed) {
         game.destroy(true);
@@ -286,6 +297,23 @@ export function PlayScreen() {
         >
           ← Exit
         </button>
+        {/* Run complete: alongside the in-canvas completion-time overlay,
+            offer the way out the run is meant to end with — back to the
+            leaderboard, where the result the room just saved now ranks.
+            Navigating unmounts this screen, which deliberately leaves the
+            room and clears the stored session (see the unmount cleanup).
+            Bottom-center so it clears the top-left Exit pill and the
+            touch pads at the bottom corners. */}
+        {finished && (
+          <button
+            type="button"
+            onClick={() => router.push("/leaderboard")}
+            className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-amber-300/40 bg-amber-300 px-6 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-amber-300/30 transition hover:bg-amber-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+          >
+            <IconTrophy className="size-4" />
+            View leaderboard
+          </button>
+        )}
       </div>
     );
   }

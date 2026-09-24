@@ -75,6 +75,11 @@
  *         `buildInteractionGrid` (interaction.ts). Standing on one (the
  *         web probes its feet cell) and pressing E triggers the tile's
  *         action on the server — 315 is showquest.
+ * - 404 – endgame interaction tile: like 315, NOT a solid kind — folded to
+ *         `0` by `buildTileGrid` and kept only in the interaction grid.
+ *         Standing on it and pressing E ends the run: the room stamps the
+ *         server finish moment and persists the result ("finish", see
+ *         interaction.ts / apps/server run-results).
  * - 375/376/401/402 – door tiles: the four halves of a 2×2 door block,
  *         placed as 375,376 on top and 401,402 below. A CLOSED door is a
  *         solid block — `buildTileGrid` folds the gids into the single
@@ -171,6 +176,18 @@ export const TILE_DEAD_ZONE = 464;
  * slope wedge.
  */
 export const TILE_INTERACTION = 315;
+/**
+ * Endgame interaction tile (gid 404, a decoration tile just left of the
+ * signpost in the real map — see `Assets/map/main.json`): the finish
+ * point. Like `TILE_INTERACTION` it is NOT collision geometry —
+ * `buildTileGrid` folds it to 0 and it lives only in the interaction grid
+ * (interaction.ts); standing on it and pressing E resolves its action
+ * (`INTERACTION_TILE_ACTIONS`: 404 → "finish"), which ends the run: the
+ * room stamps the server wall-clock finish moment on `PlayerInfo.finishedAt`
+ * and persists the completion time to its SQLite run-results store (see
+ * `apps/server/src/game/run-results.ts`).
+ */
+export const TILE_ENDGAME = 404;
 /** Door tile, top-left half of the 2×2 door block (gids 375/376 on the top
  * row). Door gids are solid: a closed door blocks the player, and
  * `buildTileGrid` folds all four gids into the single TILE_DOOR kind (see

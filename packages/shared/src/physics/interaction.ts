@@ -14,6 +14,7 @@
  */
 
 import {
+  TILE_ENDGAME,
   TILE_INTERACTION,
   TILE_SIZE,
   type CollisionLayerData,
@@ -23,11 +24,14 @@ import {
  * The action bound to each interaction tile gid. The value is the action id
  * the server executes when a player standing on the tile presses E; adding
  * a tile is one entry here (plus its gid in the map and a matching handler
- * on the server). 315 is the first interaction tile → "showquest" (currently
- * logs to the server log).
+ * on the server). 315 is the first interaction tile → "showquest" (the
+ * server sends that player a question); 404 is the endgame tile → "finish"
+ * (the run ends: the room stamps the finish moment, freezes the client's
+ * timer, and saves the completion time to its SQLite result store).
  */
 export const INTERACTION_TILE_ACTIONS = {
   [TILE_INTERACTION]: "showquest",
+  [TILE_ENDGAME]: "finish",
 } as const;
 
 /** The union of registered interaction actions. */

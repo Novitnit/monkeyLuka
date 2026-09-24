@@ -10,6 +10,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Runtime data (the server's run-results SQLite lives here)
+apps/server/data/
+
 # Env files
 .env
 .env.*

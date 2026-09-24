@@ -194,7 +194,35 @@ registered.
    door art from the same schema).
    New interaction tiles = a registry entry in
    `packages/shared/.../interaction.ts` + a handler in `interactions.ts` + the
-   gid placed in the map.
+   gid placed in the map. The second registered tile is the **endgame
+   finish**: gid 404 → `"finish"` (NOT a showquest, so it never joins a
+   door-link gate — `groupRoomObjectsByName` collects only `"showquest"`-
+   action tiles). Its handler enforces the once-per-run rule (the player's
+   `finished` flag, set in `ServerPlayer` at join) and calls `ctx.finish()`, a
+   room-owned closure; `finishRun` in the room stamps the server wall-clock
+   finish moment on the synced `PlayerInfo.finishedAt` and records the run
+   to the SQLite store (next section). Not gated by a pending question — an
+   unfinished showquest doesn't block finishing.
+
+### Run results (SQLite, the finish persistence)
+
+`src/game/run-results.ts` wraps `bun:sqlite` (built in — no dependency):
+`initRunResultsDb` opens the file (default
+`apps/server/data/jungle-runs.sqlite` resolved from the module URL, env
+`JUNGLE_RUN_RESULTS_PATH`; `:memory:` for tests; WAL + busy_timeout so
+several matchmade rooms sharing the file don't fight), creates the `runs`
+table on first open, and returns a `RunResultsStore` the room holds for its
+lifetime (closed in `onDispose`). `record()` upserts one row per session
+(`session_id UNIQUE` — the room's `finished` flag normally prevents a second
+record; the upsert backstops a restarted room that lost its sim map). The
+`time_ms` is server-computed by the shared `runCompletionTimeMs` (finish −
+`joinedAt` + 10s × `player.deaths`), so a client can never under-report. The
+room counts a death in `onPlayerDeath` **after** the one-question gate (the
+client's ~1/s self-heal re-request is dropped without counting), mirroring
+the +10s the web HUD applies per death (`onDead`) — a rare reconnect blip
+mid-death can overcount the saved time by one penalty (inflating, never
+improving, the score). `all()` reads results back best-time-first (the
+future leaderboard's ordering).
 
 ### Reconnection (drop → resume on the same seat)
 

@@ -151,7 +151,9 @@ or Colyseus imports — so it can also be unit-tested directly.
   never treats it as a slope), `TILE_INTERACTION` (315, the first interaction
   tile — NOT a collision kind: `buildTileGrid` folds it to 0 and it lives
   only in the interaction grid; standing on it and pressing E runs its
-  action on the server), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
+  action on the server), `TILE_ENDGAME` (404, the endgame finish tile — like
+  315 not a collision kind, folded to 0 and living only in the interaction
+  grid, bound to the `"finish"` action), `COLLISION_LAYER_NAME` (`"layer1"`), `PLAYER_SPAWN`.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
   names from these so rendering and physics can't drift. The debug overlay
   draws the block edges (green/blue), the slope lines (orange), the 464 pit
@@ -160,9 +162,14 @@ or Colyseus imports — so it can also be unit-tested directly.
   queries; `isBoxInDeadZone` for the dead-zone touch probe (the web client
   calls it every frame to gate the automatic checkpoint return on 464
   touch); `gridPixelSize` for world bounds.
-- Interaction tiles (315): `INTERACTION_TILE_ACTIONS` maps an interaction
+- Interaction tiles (315 → `"showquest"`, 404 → `"finish"`):
+  `INTERACTION_TILE_ACTIONS` maps an interaction
   gid → action id (315 → `"showquest"` — the server sends the player a
-  random question from `Assets/question.json`, see the quest bullet below); `buildInteractionGrid(layer)` →
+  random question from `Assets/question.json`, see the quest bullet below;
+  404 → `"finish"` — the endgame tile: the room stamps
+  `PlayerInfo.finishedAt` and persists the result to its SQLite store, see
+  `apps/server/.../run-results.ts`. Only `"showquest"` tiles join door-link
+  groups, so a finish tile never gates a door); `buildInteractionGrid(layer)` →
   `InteractionGrid` (same dims/layer as the collision grid, only
   registered gids kept, 0 = inert); `probeInteractionTile(grid, x, y,
   height)` is the E-key probe — it reads the cell under the AABB's bottom
@@ -286,7 +293,12 @@ or Colyseus imports — so it can also be unit-tested directly.
 `PlayerInfo` in `src/index.ts` carries the broadcast movement state
 (`x`, `y`, `vx`, `vy`, `grounded`, `clinging`, `facing`) alongside `name`;
 the server is the only writer, and it writes accepted client reports
-(velocity clamped to the physics max). `JungleState` also carries a synced
+(velocity clamped to the physics max). `joinedAt` is the server-stamped
+wall-clock start of the run (the client's run-timer base, survives
+reconnects) and `finishedAt` stays 0 until the endgame finish tile ends the
+run — the server stamps the finish moment (the client freezes its timer at
+it and shows the completion time; the room records the same moment).
+`JungleState` also carries a synced
 `doors` map of `DoorInfo` (`tx`, `ty`, `state: "open" | "closed"`), keyed
 by `doorKey(tx, ty)`: seeded by the room at creation from the map's door
 entities, and flipped to `"open"` when every showquest interaction linked
@@ -297,6 +309,14 @@ player who joins after a door opened still finds it open). The two physics bugs 
 while building this are written up in
 `discoveries/jungle-grounded-persists-off-ledge.md` and
 `discoveries/jungle-anticheat-flags-grounded-players.md`.
+
+## Run finish (`src/finish.ts`)
+
+`runCompletionTimeMs` defines the completion time (server wall-clock elapsed
+since `joinedAt` + `RUN_DEATH_PENALTY_MS` (10s) per death the room counted)
+— the single shared definition of "the time", used by the room's SQLite
+record and matching the web HUD's frozen readout. Pure and unit-tested in
+`physics.test.ts`.
 
 ## Quest questions & math notation (`src/quest.ts`, `src/math/`)
 

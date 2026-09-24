@@ -68,6 +68,7 @@ import {
   type TrapObjectAnnotation,
   type TrapObjectProperty,
 } from "./physics";
+import { RUN_DEATH_PENALTY_MS, runCompletionTimeMs } from "./index";
 
 /** Small helpers to build test maps. */
 function layer(width: number, height: number, gids: number[]): CollisionLayerData {
@@ -2160,6 +2161,22 @@ describe("interaction tiles (315 → showquest)", () => {
         config.height,
       ),
     ).toBe(TILE_INTERACTION);
+  });
+});
+
+describe("run finish (404 endgame tile)", () => {
+  test("completion time is elapsed + one penalty per death", () => {
+    const joinedAt = 1_000_000;
+    // No deaths: pure elapsed wall-clock.
+    expect(runCompletionTimeMs(joinedAt, joinedAt + 65_000, 0)).toBe(65_000);
+    // Each counted death adds the same 10s the live HUD jumps.
+    expect(runCompletionTimeMs(joinedAt, joinedAt + 65_000, 2)).toBe(
+      65_000 + 2 * RUN_DEATH_PENALTY_MS,
+    );
+    // A finish stamped before join (clock skew) is clamped at 0, never negative.
+    expect(runCompletionTimeMs(joinedAt, joinedAt - 5_000, 0)).toBe(0);
+    // The penalty matches the web timer's death penalty (single source of truth).
+    expect(RUN_DEATH_PENALTY_MS).toBe(10_000);
   });
 });
 

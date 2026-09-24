@@ -35,6 +35,19 @@ export interface InteractionContext {
   tile: InteractionLink;
   /** True when this tile has already been answered correctly (done). */
   completed: boolean;
+  /**
+   * True once this player already finished the run (the 404 endgame tile):
+   * the room stamps `finished` exactly once, so a repeat/forged press is a
+   * silent no-op and the result is never re-recorded.
+   */
+  finished: boolean;
+  /**
+   * End the run: the room stamps the server finish moment on the synced
+   * `PlayerInfo.finishedAt`, freezes the client's timer at it and persists
+   * the completion time to its SQLite store (see `run-results.ts`). No-op
+   * unless `finished` is false.
+   */
+  finish(): void;
 }
 
 /**
@@ -74,6 +87,17 @@ const INTERACTION_HANDLERS: Record<
       question: question.question,
       choices,
     });
+  },
+  // The endgame tile (gid 404): ending the run. The press was already
+  // validated by the room's feet probe (the player is genuinely standing on
+  // the tile, grounded), so the handler only enforces the once-per-run rule
+  // and hands the rest to the room: it stamps the server finish moment on
+  // the synced PlayerInfo (the client freezes its timer at it and shows the
+  // completion time) and persists the result to its SQLite store. Not gated
+  // by a pending question — an unfinished showquest doesn't block finishing.
+  finish: (ctx) => {
+    if (ctx.finished) return;
+    ctx.finish();
   },
 };
 

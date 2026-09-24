@@ -53,6 +53,19 @@ export interface ServerPlayer {
   lastValidAt: number;
   /** Count of teleport/speed/flood violations before the kick threshold. */
   violations: number;
+  /**
+   * Deaths the room has counted (one per death question it sent). Feeds
+   * the server-computed completion time: each death adds the same 10s
+   * penalty the client's HUD applies, so the saved result matches the
+   * readout that stopped.
+   */
+  deaths: number;
+  /**
+   * True once the player reached the 404 endgame tile and finished: a
+   * repeat (or forged) finish press is a silent no-op, and the run is
+   * never re-recorded.
+   */
+  finished: boolean;
   /** The question currently out to this player, if any (one at a time). */
   pendingQuest: QuestPending | null;
 }

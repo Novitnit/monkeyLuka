@@ -7,8 +7,11 @@ server together, or `bun run dev:web` for this app only) → http://localhost:30
 ## What ships today
 
 - A full-screen title menu over the jungle wallpaper (`src/app/page.tsx`)
-- Placeholder feature pages: `/play`, `/leaderboard`, `/how-to-play`. They
-  share `SiteHeader` / `SiteFooter` chrome plus the `PlaceholderScreen` card —
+- The leaderboard (`src/app/leaderboard/page.tsx`): completed jungle runs,
+  shortest to longest, read at request time from the server's SQLite via
+  `node:sqlite` (see `src/lib/leaderboard.ts`)
+- Placeholder feature pages: `/play`, `/how-to-play`. They share
+  `SiteHeader` / `SiteFooter` chrome plus the `PlaceholderScreen` card —
   replace each route with real content as the feature lands.
 - A touch-device gate (`src/components/game-gate.tsx`): wrapped around the
   whole app in the root layout, it blocks rendering until coarse-pointer
@@ -25,6 +28,8 @@ server together, or `bun run dev:web` for this app only) → http://localhost:30
 - `src/components/nav-items.ts` — single source of truth for the nav links
 - `src/components/placeholder-screen.tsx` + `src/components/site-header.tsx`
   / `site-footer.tsx` — shared chrome for the placeholder routes
+- `src/lib/leaderboard.ts` — server-side read of the run-results SQLite
+  (`node:sqlite`) for `/leaderboard`, shortest time first
 - `src/components/game-gate.tsx` — full-screen/orientation gate for touch
   devices, rendered once from `src/app/layout.tsx`
 - `src/hooks/use-fullscreen.ts`, `use-media-query.ts` — SSR-safe

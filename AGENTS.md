@@ -95,7 +95,8 @@ Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bu
   marked `override`. `apps/web` uses Next's generated config; don't copy the
   server baseline into it.
 - **Commit `bun.lock`**; don't add `.gitignore` rules beyond the root ones
-  (`.next/`, `node_modules/`, and env files are covered).
+  (`.next/`, `node_modules/`, and env files are covered; `apps/server/data/`
+  — the run-results SQLite — is added too).
 - Keep secrets out of source; use gitignored env files (an `env.example` may be committed).
 - Non-obvious bugs get a write-up in `discoveries/` (one file per discovery —
   format in `discoveries/agents.md`); workspace-specific gotchas (Next.js
@@ -105,11 +106,21 @@ Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bu
 ## Gameplay & anti-cheat (where the detail lives)
 
 The player simulation is **client-side** (shared `packages/shared/src/physics/`):
-collision, run/jump/wall-cling, traps, doors, quests, and the reconnect flow.
+collision, run/jump/wall-cling, traps, doors, quests, the endgame run-finish,
+and the reconnect flow.
 The full current-state deep-dive is **`docs/gameplay.md`**; per-workspace
 detail: `apps/web/AGENTS.md` (rendering/debug), `apps/server/AGENTS.md`
-(validation, quest gate), `packages/shared/AGENTS.md` (physics models).
-Per-bug root causes: `discoveries/`.
+(validation, quest gate, run-results SQLite), `packages/shared/AGENTS.md`
+(physics models). Per-bug root causes: `discoveries/`.
+
+**Endgame (404 finish tile)**: tile gid 404 in `layer1` is an interaction tile
+(shared `INTERACTION_TILE_ACTIONS`: 404 → `"finish"`). Standing on it and
+pressing E stops the run: the room stamps the server finish moment on the
+synced `PlayerInfo.finishedAt`, the web client freezes its run timer at it
+and shows the completion time (input freezes too), and the room records the
+result to a SQLite store (`apps/server/src/game/run-results.ts`;
+`apps/server/data/jungle-runs.sqlite`, env `JUNGLE_RUN_RESULTS_PATH`, time =
+finish − joinedAt + 10s per counted death). See `docs/gameplay.md`.
 
 ## Boundaries
 

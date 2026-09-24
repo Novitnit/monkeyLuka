@@ -200,8 +200,10 @@ defineServer({
 
 ### 7.1 Next.js app (React 19 + Tailwind 4)
 
-App Router pages: `/` (menu), `/play`, `/leaderboard` and `/how-to-play`
-(placeholders). The root layout wraps everything in `GameGate`, which blocks
+App Router pages: `/` (menu), `/play`, `/leaderboard` (completed runs,
+shortest-to-longest, read at request time from the server's run-results
+SQLite via `node:sqlite` — see `src/lib/leaderboard.ts`) and `/how-to-play`
+(placeholder). The root layout wraps everything in `GameGate`, which blocks
 touch devices until the viewport is landscape and full-screen (or standalone
 PWA) — no user gesture, no lock, no rendering.
 

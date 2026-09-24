@@ -328,6 +328,38 @@ over the denominator, `^` as a raised superscript, `-` as −, an explicit
 is modal: `state.questOpen` freezes the player's movement input and the E
 key while it's up.
 
+**Endgame (404 finish tile)**: tile gid 404 in `layer1` (a decoration tile
+just left of the signpost at tile (7, 11), sitting on the same solid floor)
+is the **finish point** — the second registered interaction tile, bound to
+the `"finish"` action in the shared `INTERACTION_TILE_ACTIONS` registry
+(315 is "showquest"; 404 is not a showquest, so the `room1` door-link group
+still counts 1 showquest × 1 door — `groupRoomObjectsByName` collects only
+`"showquest"`-action tiles, so the finish tile never gates a door). Standing
+on it and pressing E runs the exact same validated interaction flow as the
+signpost (client feet probe → `PLAYER_INTERACTION_MESSAGE` → the room
+re-probes its own last accepted position with the shared rule and requires
+it grounded, so only a real, on-tile press finishes). The `finish` handler
+(`apps/server/src/rooms/jungle/interactions.ts`) is once-per-run and is not
+gated by a pending question — an unfinished showquest doesn't block
+finishing. The room then stamps the **server wall-clock finish moment** on
+the synced `PlayerInfo.finishedAt` and records the run to its **SQLite
+store** (`apps/server/src/game/run-results.ts`, file
+`apps/server/data/jungle-runs.sqlite`, env `JUNGLE_RUN_RESULTS_PATH` — one
+row per session, `time_ms` = `runCompletionTimeMs`: finish − joinedAt + 10s
+per death the room counted, the same penalty the live HUD applies, so the
+saved time equals the readout that stopped). The web client reads the
+synced `finishedAt` and, the next frame, **freezes the top-right run timer**
+(`updateRunTimer` stops ticking and commits to `finishedAt − startedAt`) and
+shows a screen-fixed **RUN COMPLETE** overlay with the formatted completion
+time (`apps/web/src/game/finish/finish-overlay.ts`); `state.finished` then
+freezes movement/jump/E/R input (like the quest box) and disables the
+trap/pit kills, so the monkey stands where it finished until it leaves. The
+overlay and frozen timer both survive a page reload: `finishedAt` rides the
+re-synced schema entry, so a reconnected finisher re-sees its result and the
+timer never resumes ticking. A repeat press — or a forged one — is a silent
+no-op (`player.finished` server-side; the upsert `ON CONFLICT(session_id)`
+backstops a restarted room that lost its sim map).
+
 **Reconnection**: a dropped client (page reload, tab close, network blip)
 holds its seat + world entry for `RECONNECT_GRACE_SECONDS` (default 30,
 `JUNGLE_RECONNECT_SECONDS`): the room's `onDrop` calls Colyseus

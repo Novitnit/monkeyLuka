@@ -20,6 +20,7 @@
  */
 
 import type Phaser from "phaser";
+import { RUN_DEATH_PENALTY_MS } from "@monkeyluka/shared";
 import type { JungleRoom } from "../jungle-game";
 import type { JungleSceneState } from "../scene/state";
 
@@ -34,19 +35,18 @@ export function formatRunTime(elapsedMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/** Flat penalty added to the run timer when the player dies (see death.ts). */
-const DEATH_TIME_PENALTY_MS = 10_000;
-
 /**
- * A death adds `DEATH_TIME_PENALTY_MS` to the run time: shifting the
+ * A death adds `RUN_DEATH_PENALTY_MS` to the run time: shifting the
  * elapsed base backward makes the next `updateRunTimer` readout jump
  * exactly that much forward. Called once per death from `onDead` — the
  * scene's `dead` guard keeps a death from re-firing, so the penalty is
- * never stacked twice. A no-op until the world has built the readout.
+ * never stacked twice. The server counts the same penalty into the
+ * completion time it records, so a finished run's saved result matches
+ * the readout that stopped. A no-op until the world has built the readout.
  */
 export function applyRunTimePenalty(state: JungleSceneState): void {
   const timer = state.runTimer;
-  if (timer) timer.startedAt -= DEATH_TIME_PENALTY_MS;
+  if (timer) timer.startedAt -= RUN_DEATH_PENALTY_MS;
 }
 
 /**
@@ -93,6 +93,12 @@ export function createRunTimer(
  * digit ticks once per second, so the string guard keeps the texture from
  * re-rendering every single frame). Time is clamped at 0 so a client whose
  * clock runs behind the server's never shows a negative count.
+ *
+ * Once the run has finished (the room stamped `PlayerInfo.finishedAt` after
+ * the 404 endgame tile's E press) the timer is *stopped*: the readout is
+ * frozen at the completion time — the server finish moment minus this
+ * timer's own base (which carries the death penalties the server counted),
+ * so it matches the room's recorded result — and stops ticking.
  */
 export function updateRunTimer(
   room: JungleRoom,
@@ -100,6 +106,16 @@ export function updateRunTimer(
 ): void {
   const timer = state.runTimer;
   if (!timer) return;
+  // Endgame: the run is over, so the readout commits to the completion
+  // time (the server finish moment − this client's base, penalties
+  // included) and never ticks again — a reconnect keeps the same frozen
+  // value because `finishedAt` survives in the re-synced entry.
+  const mine = room.state?.players.get(room.sessionId);
+  if (mine && mine.finishedAt > 0) {
+    const final = formatRunTime(mine.finishedAt - timer.startedAt);
+    if (timer.text.text !== final) timer.text.setText(final);
+    return;
+  }
   const formatted = formatRunTime(Date.now() - timer.startedAt);
   if (timer.text.text !== formatted) {
     timer.text.setText(formatted);

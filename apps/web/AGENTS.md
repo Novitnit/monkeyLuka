@@ -13,6 +13,35 @@ It also hosts the project's **REST API**: the Elysia app that used to run as a
 separate `apps/server` process now mounts inside Next via Elysia's official
 "Integration with Nextjs" pattern (see below).
 
+## Leaderboard (`/leaderboard`)
+
+The leaderboard page (`src/app/leaderboard/page.tsx`) is a **dynamic Server
+Component** (`export const dynamic = "force-dynamic"` — always read at request
+time, never prerendered/cached) that lists completed jungle runs
+**shortest-to-longest**. The runs are written by the Colyseus room into
+`apps/server/data/jungle-runs.sqlite` (SQLite store + schema + the
+`JUNGLE_RUN_RESULTS_PATH` env override live in
+`apps/server/src/game/run-results.ts` — unchanged, still authoritative); the
+page's read side is `src/lib/leaderboard.ts`, which opens that same file with
+**`node:sqlite`**.
+
+Gotcha that explains the driver choice: **`bun run dev`/`next build` actually
+run on Node.js** — `next`'s bin shebang is `#!/usr/bin/env node`, so `bun:sqlite`
+is NOT resolvable in this process (a route importing it 500s at module
+evaluation, and marking it `serverExternalPackages` fails too because external
+modules load via Node `require`) . The leaderboard reader therefore uses Node's
+built-in `node:sqlite` (the runtime is Node 26) to read the same file the
+server writes with bun:sqlite — SQLite is just SQLite across drivers. Both
+files agree on the path (`JUNGLE_RUN_RESULTS_PATH`, default
+`../server/data/jungle-runs.sqlite` relative to `apps/web` — the dev/build
+scripts `cd` there) and the row shape
+(`name`/`time_ms`/`finished_at`/`room_id`, `ORDER BY time_ms ASC, finished_at
+ASC`); change either in the server store and mirror it in the reader.
+`node:sqlite` types come from `src/types/node-sqlite.d.ts` (a hand-held shim —
+`@types/node@20` predates the module); the reader opens read-only with a busy
+timeout, returns `[]` when the file doesn't exist (no runs yet), and
+opens/closes a fresh connection per read.
+
 ## Play flow & realtime client
 
 `/play` (`src/components/play-screen.tsx`) is the jungle entry point: it owns
@@ -48,8 +77,8 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   `max(1rem, env(safe-area-inset-*))` so it clears phone notches;
   `overscroll-behavior: none` on `body` stops mobile rubber-band/
   pull-to-refresh from fighting the fixed-height screen. The placeholder
-  screens (`/how-to-play`, `/leaderboard`) follow the same fixed-height +
-  clamp-padding pattern.
+  screens (`/how-to-play`; `/leaderboard` now renders real runs, see below)
+  follow the same fixed-height + clamp-padding pattern.
 - **On-screen touch controls**: when the primary pointer is coarse (mobile
   — the same `(pointer: coarse)` check as the GameGate), the playing state
   renders `src/components/touch-controls.tsx` over the canvas: a bottom-left
@@ -349,7 +378,36 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   modal: `state.questOpen` freezes movement input and the E key in
   `scene/update.ts`, and the box closes itself 3s after an unanswered
   answer (a blip can't wedge the player in the modal).
-
+- **Run timer + endgame finish (404 tile)**: `src/game/timer/run-timer.ts`
+  renders a top-right HUD readout of the run time — a screen-fixed text
+  (scrollFactor 0, above every room) whose elapsed base is pinned once at
+  world build to the server-stamped `PlayerInfo.joinedAt`, ticked each frame
+  by `updateRunTimer` and re-rendered only when the formatted string
+  changes. A death calls `applyRunTimePenalty` (`onDead`, once per death):
+  the base shifts 10s back so the readout jumps forward (the shared
+  `RUN_DEATH_PENALTY_MS`). The **404 endgame tile** (`scene/update.ts`)
+  is the second interaction action (shared registry: 404 → `"finish"` — a
+  decoration tile at (7, 11) in the real map, stood on from the solid floor
+  below like the signpost; only `"showquest"` tiles ever join door-link
+  groups, so it doesn't gate a door). Its E press flows through the normal
+  interaction path (room re-probes its own last accepted position); on
+  validation the room stamps `PlayerInfo.finishedAt` (server wall-clock) and
+  saves the result to its SQLite store. The client's next frame then
+  **freezes the timer** at `finishedAt − startedAt` (`updateRunTimer` stops
+  ticking), sets `state.finished` (joins `questOpen`/`dead` in the `frozen`
+  input gate; also disables the trap/pit kill probes and the R key) and
+  shows the completion time in a screen-fixed **RUN COMPLETE** overlay
+  (`src/game/finish/finish-overlay.ts`, created once in `create.ts`).
+  The same finish transition fires the one-shot `JungleGameOptions.onFinish`
+  callback (wired through `state.onFinish`, update.ts), which flips
+  `finished` in `play-screen.tsx` and raises a bottom-center **View
+  leaderboard** button over the canvas (amber CTA with the trophy icon,
+  cleared of the top-left Exit pill and the touch pads); clicking it
+  `router.push`es to `/leaderboard`, and the screen's unmount cleanup —
+  game destroy + `room.leave()` + session clear — is the deliberate-exit
+  path, so nothing holds the finished seat.
+  `finishedAt` rides the re-synced schema entry, so a reconnected finisher
+  re-sees the overlay and the frozen timer (it never resumes ticking).
 - **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's
   `reconnectionToken` + name in **sessionStorage** (survives reloads, not tab
   closes). `play-screen.tsx` starts directly in a "resuming" phase on mount

@@ -39,6 +39,7 @@ import {
 import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
 import { createDoorDebug } from "../door/door-debug";
+import { createFinishOverlay } from "../finish/finish-overlay";
 import { createQuestBox } from "../quest/quest-box";
 import { createRunTimer } from "../timer/run-timer";
 import {
@@ -345,12 +346,27 @@ export function createSceneCreate(
           // devices.
           state.touchControls = options.touchControls ?? null;
 
+          // Endgame callback (JungleGameOptions.onFinish): fired by
+          // update.ts exactly once on the finish transition (the same
+          // moment the overlay below shows), so the React layer can raise
+          // its leaderboard CTA over the canvas.
+          state.onFinish = options.onFinish ?? null;
+
           // The quest question box (showquest interaction): screen-fixed
           // modal that listens for `quest:question` on the room and returns
           // the player's answer via `quest:answer`. Independent of the map,
           // so it can be created once here.
           const questBox = createQuestBox(this, room, state);
           setDebugHandle("__jungleQuest", questBox);
+
+          // The endgame completion modal (404 finish tile): screen-fixed
+          // panel, hidden until the room stamps `finishedAt` on our synced
+          // entry; update.ts then shows it once with the completion time
+          // and freezes the player (state.finished). Independent of the
+          // map, so it can be created once here.
+          const finishOverlay = createFinishOverlay(this);
+          setDebugHandle("__jungleFinish", finishOverlay);
+          state.finishOverlay = finishOverlay;
 
           // Top-right run timer: a screen-fixed readout of how long the
           // local player has been in the room, derived from the server-

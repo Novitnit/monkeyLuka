@@ -4,8 +4,9 @@ import { SiteHeader } from "@/components/site-header";
 
 /**
  * Shared shell for menu destinations whose features haven't landed yet
- * (`/play`, `/leaderboard`, `/how-to-play`). Swap a route's page for real
- * content as the feature ships — keep SiteHeader/SiteFooter as the chrome.
+ * (`/play`, `/how-to-play`). Swap a route's page for real content as the
+ * feature ships — keep SiteHeader/SiteFooter as the chrome. (`/leaderboard`
+ * outgrew this: it renders real runs, see `src/lib/leaderboard.ts`.)
  */
 export function PlaceholderScreen({
   eyebrow,

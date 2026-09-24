@@ -59,8 +59,29 @@ export function createSceneUpdate(
     // deaths, and even a connection drop (the player is still seated) —
     // placed before the connection check for exactly that reason. The
     // elapsed base is the server-stamped joinedAt (authoritative), so the
-    // readout survives a reload through the same reconnection flow.
+    // readout survives a reload through the same reconnection flow. Once
+    // the run finishes it stops ticking and freezes at the completion time.
     updateRunTimer(room, state);
+
+    // --- Endgame: the 404 interaction tile's E press ended the run — the
+    // room stamped the server finish moment on our synced entry. Show the
+    // completion overlay exactly once (the timer itself was already frozen
+    // by updateRunTimer at the same moment) and freeze the player for the
+    // rest of the session: `finished` joins the quest/death gates below, so
+    // movement, E and R stop registering, and the trap/pit probes stop
+    // killing. The overlay's time is the server finish moment minus this
+    // timer's own base (death penalties included), matching the readout
+    // and the room's saved result. ---
+    const mine = room.state?.players.get(room.sessionId);
+    if (!state.finished && mine && mine.finishedAt > 0) {
+      state.finished = true;
+      const base = state.runTimer?.startedAt ?? mine.joinedAt;
+      state.finishOverlay?.show(Math.max(0, mine.finishedAt - base));
+      // One-shot endgame callback: lets the React layer (play-screen.tsx)
+      // react to the finish — e.g. show its "return to leaderboard" button
+      // over the canvas right as the completion time appears.
+      state.onFinish?.();
+    }
 
     // Movable traps sweep independently of the connection state (they are
     // world objects, not the player's simulation, and never report to the
@@ -119,8 +140,10 @@ export function createSceneUpdate(
     // (and the E interaction below) is ignored and the reports just keep the
     // standing prediction flowing. Same while dead (`state.dead`, see
     // death.ts): the body is frozen where it fell until its death question
-    // is answered correctly — no gravity-walk, no jump, no wall grab. ---
-    const frozen = state.questOpen || state.dead;
+    // is answered correctly — no gravity-walk, no jump, no wall grab. And
+    // same once the run has finished (`state.finished`, the 404 endgame
+    // tile): the run is over, so the monkey stands where it finished. ---
+    const frozen = state.questOpen || state.dead || state.finished;
     // On-screen touch controls merge with the keyboard axes: left/right are
     // held states, jump is a tap edge consumed below. The edge mirrors
     // `Keyboard.JustDown` exactly — while frozen it stays buffered (like a
@@ -157,7 +180,12 @@ export function createSceneUpdate(
     // jumping through it). Skipped while the quest box is open — the room
     // also drops repeat showquests while one is pending, so a stray tap
     // can't swap the question mid-answer. ---
-    if (!state.questOpen && !state.dead && player.physics.grounded) {
+    if (
+      !state.questOpen &&
+      !state.dead &&
+      !state.finished &&
+      player.physics.grounded
+    ) {
       const interactPressed =
         (state.keyE && phaser.Input.Keyboard.JustDown(state.keyE)) ||
         Boolean(touch?.interact);
@@ -184,7 +212,12 @@ export function createSceneUpdate(
     // --- Debug: R returns to the checkpoint. Only registered when
     // NEXT_PUBLIC_DEBUG is on; the room's checkpoint handler re-baselines
     // its validation at the spawn so the jump isn't a violation. ---
-    if (state.keyR && !state.dead && phaser.Input.Keyboard.JustDown(state.keyR)) {
+    if (
+      state.keyR &&
+      !state.dead &&
+      !state.finished &&
+      phaser.Input.Keyboard.JustDown(state.keyR)
+    ) {
       player.teleportTo(state.checkpoint.x, state.checkpoint.y);
       state.checkpointPending = true;
       room.send(PLAYER_CHECKPOINT_MESSAGE, {});
@@ -281,6 +314,7 @@ export function createSceneUpdate(
     if (
       !state.checkpointPending &&
       !state.dead &&
+      !state.finished &&
       state.trapSpikeRunViews &&
       state.trapSpikeRunViews.some((view) =>
         isBoxTouchingTrapSpikeRun(
@@ -307,6 +341,7 @@ export function createSceneUpdate(
     if (
       !state.checkpointPending &&
       !state.dead &&
+      !state.finished &&
       isBoxInDeadZone(
         grid,
         player.physics.x,
@@ -344,7 +379,6 @@ export function createSceneUpdate(
     // Reports keep flowing meanwhile — they are all sent from the spawn
     // point and ordered after the checkpoint message, so the re-baselined
     // server accepts them. ---
-    const mine = room.state.players.get(room.sessionId);
     if (mine) {
       if (
         state.checkpointPending &&

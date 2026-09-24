@@ -64,6 +64,14 @@ export interface JungleGameOptions {
    * accepts keyboard input only.
    */
   touchControls?: TouchControlsState;
+  /**
+   * Fired exactly once when the run finishes — the room stamped
+   * `PlayerInfo.finishedAt` and the completion overlay was shown (see
+   * update.ts / finish-overlay.ts). Lets the React layer react to the
+   * endgame, e.g. to raise a "return to leaderboard" button over the
+   * canvas (play-screen.tsx).
+   */
+  onFinish?: () => void;
 }
 
 /**

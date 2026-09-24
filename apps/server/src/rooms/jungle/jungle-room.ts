@@ -18,6 +18,7 @@ import {
   doorKey,
   groupRoomObjectsByName,
   probeInteractionTile,
+  runCompletionTimeMs,
   validatePositionReport,
   type DoorEntity,
   type JungleRoomState,
@@ -29,6 +30,7 @@ import {
   shuffleChoices,
   type JungleQuestionBank,
 } from "../../game/quest-bank";
+import { initRunResultsDb, type RunResultsStore } from "../../game/run-results";
 import {
   clampVelocity,
   sanitizePlayerInput,
@@ -76,11 +78,16 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   private map!: JungleMapData;
   private quests!: JungleQuestionBank;
   private gate!: QuestGate;
+  /** Completed-run persistence (SQLite under apps/server/data). */
+  private results!: RunResultsStore;
   private readonly sim = new Map<string, ServerPlayer>();
 
   override async onCreate(): Promise<void> {
     this.map = await loadJungleMap();
     this.quests = await loadJungleQuestions();
+    // Endgame results land in the SQLite store as runs finish (see
+    // run-results.ts); the store keeps its own file handle until dispose.
+    this.results = initRunResultsDb();
     this.state = new JungleState();
     if(debug){ console.log(`Room ${this.roomId} created`) }
     // Room-level puzzle progress: which interaction tiles are solved, and
@@ -142,6 +149,8 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       },
       lastValidAt: 0,
       violations: 0,
+      deaths: 0,
+      finished: false,
       pendingQuest: null,
     });
 
@@ -158,6 +167,8 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       // HUD): stamped here, never by the client. Survives reconnects
       // because the reconnect reuses this same schema entry.
       joinedAt: Date.now(),
+      // 0 = run in progress; the endgame finish handler stamps the moment.
+      finishedAt: 0,
     });
     this.state.players.set(client.sessionId, info);
   }
@@ -300,7 +311,58 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       },
       tile: { tx: probe.tx, ty: probe.ty },
       completed: this.gate.isCompleted(probe.tx, probe.ty),
+      finished: player.finished,
+      finish: () => this.finishRun(client, player, info),
     });
+  }
+
+  /**
+   * End the run (the 404 endgame tile's "finish" action — see
+   * interactions.ts). The press was already validated by the shared feet
+   * probe in `onPlayerInteraction`, so reaching here means the player is
+   * genuinely standing on the tile; this stamps the server-authoritative
+   * finish moment on the synced `PlayerInfo` — the client freezes its run
+   * timer at it and displays the completion time — and persists the result
+   * to the SQLite run-results store. `player.finished` keeps a repeat or
+   * forged press (or a reconnect re-delivering the message) from ending or
+   * re-recording the run twice.
+   *
+   * The recorded time includes the death penalties the room counted (its
+   * own +10s per death question sent), matching the live HUD readout that
+   * stopped — see `runCompletionTimeMs` in @monkeyluka/shared. A rare
+   * reconnect blip mid-death can make the server count one death more than
+   * the client applied, which only inflates the saved time (never enables
+   * a better one).
+   */
+  private finishRun(
+    client: Client,
+    player: ServerPlayer,
+    info: PlayerInfo | undefined,
+  ): void {
+    player.finished = true;
+    const finishedAt = Date.now();
+    const joinedAt = info?.joinedAt ?? finishedAt;
+    const timeMs = runCompletionTimeMs(joinedAt, finishedAt, player.deaths);
+    if (info) info.finishedAt = finishedAt;
+    try {
+      this.results.record({
+        sessionId: client.sessionId,
+        name: info?.name ?? `Player-${client.sessionId.slice(0, 4)}`,
+        timeMs,
+        finishedAt,
+        roomId: this.roomId,
+      });
+    } catch (err) {
+      // A disk error must never take down the room or undo the finish: the
+      // schema already stamped `finishedAt` (the client has its result), so
+      // log and move on — only persistence is lost.
+      console.error(`[jungle] failed to record run for ${client.sessionId}:`, err);
+    }
+    if (debug) {
+      console.log(
+        `${info?.name ?? client.sessionId} finished in ${timeMs}ms (${player.deaths} deaths)`,
+      );
+    }
   }
 
   /**
@@ -321,6 +383,12 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   private onPlayerDeath(client: Client): void {
     const player = this.sim.get(client.sessionId);
     if (!player || player.pendingQuest) return;
+    // Count the death AFTER the one-question-at-a-time gate: a repeat death
+    // message while a question is already out (the client's ~1/s self-heal
+    // re-request) is dropped without counting a second death. The client
+    // applies its +10s HUD penalty once per actual death (onDead), and this
+    // counter feeds the same penalty into the recorded completion time.
+    player.deaths += 1;
     const question = pickRandomQuestion(this.quests);
     const { choices, correctIndex } = shuffleChoices(question);
     player.pendingQuest = {
@@ -388,6 +456,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   }
 
   override onDispose(): void {
+    this.results.close();
     this.sim.clear();
     this.state.players.clear();
   }
