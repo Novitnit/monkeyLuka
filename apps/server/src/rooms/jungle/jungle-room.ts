@@ -154,6 +154,10 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       grounded: spawn.grounded,
       clinging: false,
       facing: spawn.facing,
+      // Authoritative start moment for the client's run timer (top-right
+      // HUD): stamped here, never by the client. Survives reconnects
+      // because the reconnect reuses this same schema entry.
+      joinedAt: Date.now(),
     });
     this.state.players.set(client.sessionId, info);
   }

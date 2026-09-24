@@ -24,6 +24,7 @@ import { ROOM_HEIGHT, ROOM_WIDTH } from "../map/tiled-map";
 import { SNAP_DISTANCE } from "../player/player";
 import { syncRemotePlayers } from "../player/remote-players";
 import { syncOpenDoors } from "../door/door-open";
+import { updateRunTimer } from "../timer/run-timer";
 import { updateTrapSpikeRunViews } from "../trap/trap-spike-run-render";
 import {
   updateMovePlatformViews,
@@ -52,6 +53,14 @@ export function createSceneUpdate(
     if (!player || !grid || !playerLayer) return;
 
     const dt = Math.min(delta, 50) / 1000;
+
+    // Run timer (top-right HUD): ticks every frame. It counts continuous
+    // wall-clock time in the room, so it keeps ticking through quests,
+    // deaths, and even a connection drop (the player is still seated) —
+    // placed before the connection check for exactly that reason. The
+    // elapsed base is the server-stamped joinedAt (authoritative), so the
+    // readout survives a reload through the same reconnection flow.
+    updateRunTimer(room, state);
 
     // Movable traps sweep independently of the connection state (they are
     // world objects, not the player's simulation, and never report to the

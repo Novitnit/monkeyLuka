@@ -15,6 +15,7 @@ import {
 import type { JungleRoom } from "./jungle-game";
 import type { Player } from "./player/player";
 import type { JungleSceneState } from "./scene/state";
+import { applyRunTimePenalty } from "./timer/run-timer";
 
 /**
  * Why a player died. Each member is a distinct lethal situation the update
@@ -49,6 +50,11 @@ export function onDead(
   switch (cause) {
     case "dead-zone":
     case "trap":
+      // Every death adds the 10-second run-time penalty (see run-timer.ts):
+      // the timer's elapsed base shifts backward so the readout jumps 10s
+      // forward. The scene's `dead` guard keeps onDead from re-firing
+      // while a death is in progress, so the penalty counts exactly once.
+      applyRunTimePenalty(state);
       player.teleportTo(state.checkpoint.x, state.checkpoint.y);
       state.checkpointPending = true;
       room.send(PLAYER_CHECKPOINT_MESSAGE, {});

@@ -133,6 +133,14 @@ export interface JungleSceneState {
    */
   questOpen: boolean;
   /**
+   * Top-right run-timer HUD (see timer/run-timer.ts): the screen-fixed
+   * readout text plus the fixed elapsed base — the server's `joinedAt`
+   * when it was synced by world-build time, else the scene's mount
+   * moment; captured once so the readout never flips bases or jumps.
+   * Null until the world finishes loading.
+   */
+  runTimer: { text: Phaser.GameObjects.Text; startedAt: number } | null;
+  /**
    * True from the moment the player dies (dead-zone pit touch, see onDead
    * in death.ts) until its death question is answered correctly. Freezes
    * movement input like `questOpen` (and gates the E/R keys and the pit
@@ -196,6 +204,7 @@ export function createJungleSceneState(): JungleSceneState {
     keyE: null,
     touchControls: null,
     questOpen: false,
+    runTimer: null,
     dead: false,
     deathRequestAt: 0,
     connectionWasDown: false,

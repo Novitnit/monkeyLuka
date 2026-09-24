@@ -31,8 +31,13 @@ export const MAX_PLAYER_NAME_LENGTH = 24;
  * the physics max). The client renders this state and reconciles its local
  * prediction against it; a report that fails validation leaves the player
  * stopped at the previously accepted position. `clinging` mirrors the wall-
- * grab state so remote sprites play the cling animation. See `physics.ts`
- * for the shared simulation and its validation rules.
+ * grab state so remote sprites play the cling animation. `joinedAt` is the
+ * server wall-clock moment (ms) this player's run started — stamped by the
+ * room in `onJoin`, never by the client; clients derive their top-right
+ * run-timer from it, and it survives a reload because a reconnected
+ * session reuses the same schema entry (the timer keeps counting instead
+ * of restarting). See `physics.ts` for the shared simulation and its
+ * validation rules.
  */
 export const PlayerInfo = schema({
   name: t.string(),
@@ -43,6 +48,7 @@ export const PlayerInfo = schema({
   grounded: t.boolean(),
   clinging: t.boolean(),
   facing: t.number(),
+  joinedAt: t.number(),
 }, "PlayerInfo");
 export type PlayerInfo = InstanceType<typeof PlayerInfo>;
 

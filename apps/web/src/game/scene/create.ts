@@ -40,6 +40,7 @@ import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
 import { createDoorDebug } from "../door/door-debug";
 import { createQuestBox } from "../quest/quest-box";
+import { createRunTimer } from "../timer/run-timer";
 import {
   MOVE_PLATFORM_TEXTURE,
   createMovePlatformDebug,
@@ -350,6 +351,13 @@ export function createSceneCreate(
           // so it can be created once here.
           const questBox = createQuestBox(this, room, state);
           setDebugHandle("__jungleQuest", questBox);
+
+          // Top-right run timer: a screen-fixed readout of how long the
+          // local player has been in the room, derived from the server-
+          // stamped `joinedAt` on its synced PlayerInfo (see run-timer.ts).
+          // Ticked every frame by update.ts, independent of the connection
+          // state.
+          createRunTimer(this, state, room);
         } catch (err) {
           console.error("Failed to load the jungle map:", err);
         }
