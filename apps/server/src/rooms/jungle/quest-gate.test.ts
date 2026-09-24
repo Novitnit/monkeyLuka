@@ -21,7 +21,7 @@ import { parseJungleMap } from "../../game/jungle-map";
 import { QuestGate } from "./quest-gate";
 
 function door(tx: number, ty: number): DoorEntity {
-  return { tx, ty, cols: 2, rows: 2, state: "closed" };
+  return { tx, ty, cols: 1, rows: 2, state: "closed" };
 }
 
 function group(
@@ -103,8 +103,8 @@ describe("quest gate", () => {
 
   test("a room's sole signpost opens its sole door (gate end to end)", () => {
     // Synthetic raw map shaped like the shipped level's room1 gate: one
-    // `room1` rectangle over the 315 signpost at (17, 11) and the 2×2 door
-    // block at (29, 8). It runs through the real loader + grouping so the
+    // `room1` rectangle over the 315 signpost at (17, 11) and the 1×2 door
+    // stack at (29, 8). It runs through the real loader + grouping so the
     // whole link pipeline is exercised — and it is built in-test, so a map
     // edit can't move or remove the gate. Answering the signpost completes
     // it, and since it's the only linked showquest, the door opens.
@@ -113,9 +113,7 @@ describe("quest gate", () => {
     const gids = new Array<number>(width * height).fill(0);
     gids[11 * width + 17] = TILE_INTERACTION;
     gids[8 * width + 29] = TILE_DOOR_TOP_LEFT;
-    gids[8 * width + 30] = TILE_DOOR_TOP_RIGHT;
     gids[9 * width + 29] = TILE_DOOR_BOTTOM_LEFT;
-    gids[9 * width + 30] = TILE_DOOR_BOTTOM_RIGHT;
     const parsed = parseJungleMap({
       width,
       height,

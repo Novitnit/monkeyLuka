@@ -13,9 +13,10 @@
  *                       (`INTERACTION_TILE_ACTIONS`), the `InteractionGrid`
  *                       + `buildInteractionGrid`, and the
  *                       `interactionTileUnderFeet` feet probe (E key)
- * - `door.ts`        – door entities: the 2×2 door blocks (gids
- *                       375/376/401/402) recognized as single open/closed
- *                       door world objects (`buildDoorEntities`); a closed
+ * - `door.ts`        – door entities: the 1×2 door stacks (a top gid
+ *                       375/376 above a bottom gid 401/402) recognized as
+ *                       single open/closed door world objects
+ *                       (`buildDoorEntities`); a closed
  *                       door is a solid, NON-sticky block — the grid folds
  *                       their gids into the TILE_DOOR kind, which blocks
  *                       walking but can't be grabbed (no wall cling)

@@ -5,7 +5,7 @@
  * Each rectangle in the Tiled map's room objectgroup (`ROOM_OBJECT_GROUP_NAME`,
  * "room") is a named region. A tile entity belongs to a region when its
  * CENTER lies inside the object's rectangle: showquest interaction tiles
- * (the 315 signpost, action "showquest") and door blocks (2×2 of door gids)
+ * (the 315 signpost, action "showquest") and door stacks (1×2 of door gids)
  * are collected per object, and objects that share a NAME form one gate —
  * the showquest interactions and doors they contain, linked under that
  * shared name. The real map has a single room object named `room1` — a

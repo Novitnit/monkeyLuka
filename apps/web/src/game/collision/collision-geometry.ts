@@ -56,11 +56,11 @@
  *         neighbor (other collision types are ignored, so the pit outline
  *         is self-contained and never hidden under a bordering wall/floor
  *         block's own edges).
- * - 375/376/401/402 – door tiles: each recognized 2×2 door block (see
+ * - 375/376/401/402 – door tiles: each recognized 1×2 door stack (see
  *         buildDoorEntities in @monkeyluka/shared) is carried on
  *         `CollisionGeometry.doors` as its own `DoorEntity`, and the debug
  *         overlay draws each Entity's full PURPLE perimeter — four sides
- *         around the whole 2×2 block — grouped per Entity so an opened
+ *         around the whole stack — grouped per Entity so an opened
  *         door's lines can be hidden individually (see the `hideDoor` on
  *         the overlay handle) while the rest of the overlay stays put.
  *         Like the 464 pit, the outline is self-contained: other
@@ -143,7 +143,7 @@ export const DEFAULT_COLLISION_LAYER = COLLISION_LAYER_NAME;
  * a vertical boundary line (left or right side). Debug overlay colors
  * floors blue and walls green; "hazard" marks the dead-zone (464) pit
  * outline, drawn red. Door perimeters are NOT segments — they live on
- * `CollisionGeometry.doors` as per-Entity 2×2 perimeters (drawn purple by
+ * `CollisionGeometry.doors` as per-Entity perimeters (drawn purple by
  * the overlay) so an opened door's lines can be hidden individually.
  */
 export type EdgeKind = "floor" | "wall" | "hazard";
@@ -179,7 +179,7 @@ export interface CollisionGeometry {
   /** Slope lines of the diagonal tiles (110/109/262/287). */
   diagonals: DiagonalSegment[];
   /**
-   * Door entities (each recognized 2×2 door block, see door.ts in
+   * Door entities (each recognized 1×2 door stack, see door.ts in
    * @monkeyluka/shared): the debug overlay draws each one's own full purple
    * perimeter, on its own graphics, so an opened door's lines can be
    * hidden individually while the rest of the overlay stays.
@@ -492,10 +492,10 @@ export function buildCollisionGeometry(
     }
   }
 
-  // Door entities (see door.ts in @monkeyluka/shared): every recognized 2×2
-  // door block is carried on `CollisionGeometry.doors`; the debug overlay
+  // Door entities (see door.ts in @monkeyluka/shared): every recognized 1×2
+  // door stack is carried on `CollisionGeometry.doors`; the debug overlay
   // draws each Entity's own full perimeter (PURPLE) — four sides around the
-  // whole 2×2 block, grouped per Entity so an opened door's lines can be
+  // whole stack, grouped per Entity so an opened door's lines can be
   // hidden individually (see `hideDoor` on the overlay handle). Like the
   // 464 hazard outline, a door face is covered only by the door itself —
   // other collision types are deliberately NOT consulted, so a bordering

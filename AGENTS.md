@@ -17,7 +17,7 @@ Start here, then follow the link that matches what you're working on:
 | `apps/web/AGENTS.md` | `@monkeyluka/web` — Next.js 16 frontend + Elysia REST API under `/api` |
 | `apps/server/AGENTS.md` | `@monkeyluka/server` — Colyseus realtime only, `defineServer` format |
 | `packages/shared/AGENTS.md` | `@monkeyluka/shared` — framework-agnostic shared code |
-| `Assets/` | Tiled game-map data + art (web-served via symlinks under `apps/web/public/map`, `public/player`, `public/trap`) |
+| `Assets/` | Tiled game-map data + art (web-served via symlinks under `apps/web/public/map`, `public/player`, `public/trap`, and `public/door.png`) |
 | `discoveries/agents.md` | How to write a discovery note — one file per non-obvious bug/fix |
 
 Read the workspace `AGENTS.md` before editing inside that workspace; read

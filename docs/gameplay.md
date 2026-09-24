@@ -185,11 +185,12 @@ The debug overlay (NEXT_PUBLIC_DEBUG, `__jungleMovePlatformDebug`) draws
 each platform's patrol lane + its current 32×16 slab in light blue; the
 sheet is served via the `public/trap` symlink and shares the scene's trap
 layer (created when either trap type exists) with the spike run.
-**Door entities**: the four gids 375/376/401/402 placed as a
-2×2 block (375,376 on top, 401,402 below) form one **door** Entity with
+**Door entities**: a door is a 1×2 stack of door tiles — a top gid
+(375) above a bottom gid (401) — forming one **door** Entity with
 two states (open/closed) — `buildDoorEntities` in
 `packages/shared/src/physics/door.ts` greedily recognizes each
-non-overlapping 2×2 block of door gids as a single door (default state
+non-overlapping top-over-bottom stack of door gids as a single door
+(default state
 `closed`). A closed door is **solid**: `buildTileGrid` folds the door
 gids into the single `TILE_DOOR` kind (a full block — the web client's
 local prediction and the server's report validation share that same
@@ -205,26 +206,37 @@ smooth all the way to their edges and a player jumping into a closed
  door slides off instead of hanging; the wall beside a door only becomes
 grabable once the strip fully clears the door's edge. The web debug overlay
 draws each
-door's own full 2×2 perimeter in **purple** — door edges
+door's own full perimeter in **purple** — door edges
 never merge with or get hidden by other collision types, mirroring the
 464 pit outline. Each door's lines live on their own graphics (keyed by
 `doorKey(tx, ty)`, see `CollisionGeometry.doors` in
 `apps/web/src/game/collision/collision-geometry.ts`), so the overlay can
-hide them per door once the door opens (see below) — the per-room slices are stored in a sparse array indexed by room (a 2×2 door always fits one room, so earlier rooms are `undefined` holes), which `hideDoor`/`setEnabled`/`destroy` must and do skip (`if (overlay)`), else `.setVisible` on a hole throws. **Opening a door is room-level puzzle progress**: the
+hide them per door once the door opens (see below) — the per-room slices are stored in a sparse array indexed by room (a 1×2 door always fits one room, so earlier rooms are `undefined` holes), which `hideDoor`/`setEnabled`/`destroy` must and do skip (`if (overlay)`), else `.setVisible` on a hole throws. **Opening a door is room-level puzzle progress**: the
 room's `QuestGate` (`apps/server/src/rooms/jungle/quest-gate.ts`) flips a
 door's entity state to `open` when every showquest interaction linked to
 it (same room-objectgroup name group, see the door-links bullet) has been
 answered correctly. Opening must make the doorway passable on BOTH sides:
-`clearDoorFromGrid` (shared `physics/door.ts`) zeroes the door's four
+`clearDoorFromGrid` (shared `physics/door.ts`) zeroes the door's two
 cells in the room's validation grid (reports from inside the doorway must
 not read as buried-in-geometry) and in every client's prediction grid
 (`apps/web/src/game/door/door-open.ts`, driven by the synced
-`JungleState.doors` schema). The door's tile art keeps rendering as
-usual — only its purple debug-collision perimeter is dropped
-(`CollisionDebug.hideDoor` in `apps/web/src/game/collision/collision-debug.ts`,
+`JungleState.doors` schema), drops the door's purple debug-collision
+perimeter (`CollisionDebug.hideDoor` in
+`apps/web/src/game/collision/collision-debug.ts`,
 which draws each door's lines on its own graphics precisely so an opened
-door's lines can be removed individually), so the debug overlay stops
-drawing collision at the passable doorway. Because the state is
+door's lines can be removed individually), and plays the door's one-shot
+opening animation. The door's art is NOT tileset tiles: the web renderer
+skips the door gids and draws each door from the dedicated
+`Assets/door.png` sheet instead (`apps/web/src/game/door/door-render.ts`,
+served via the `public/door.png` symlink) — a 3×3 grid of 64×64 cells
+whose frames 0–8 trace the panel lifting out (frame 0 idle/closed, start
+sliding at 5, doorway revealed by 8). The square cell maps onto the
+door's 1×2-tile (16×32 map-px) stack at a quarter/half scale. Frame 0
+shows while closed; when the
+schema reports the door open the frames play once at 12 fps and the sprite
+hides on completion, so the doorway ends visually empty. A client that
+joins after the door opened spawns the sprite hidden instead of replaying
+it. Because the state is
 schema-synced, a player who joins after the door opened still finds it
 open.
 

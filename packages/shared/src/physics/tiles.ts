@@ -80,8 +80,9 @@
  *         Standing on it and pressing E ends the run: the room stamps the
  *         server finish moment and persists the result ("finish", see
  *         interaction.ts / apps/server run-results).
- * - 375/376/401/402 – door tiles: the four halves of a 2×2 door block,
- *         placed as 375,376 on top and 401,402 below. A CLOSED door is a
+ * - 375/376/401/402 – door tiles: the top (375/376) and bottom (401/402)
+ *         cells of a door stack, placed as 375 above 401 (one tile wide,
+ *         two tall). A CLOSED door is a
  *         solid block — `buildTileGrid` folds the gids into the single
  *         TILE_DOOR kind (an extra full-block kind, like 65 folds to
  *         TILE_SOLID), so the player cannot walk through a closed door —
@@ -89,7 +90,8 @@
  *         TILE_DOOR faces, so jumping against a door slides off instead
  *         of hanging (a door is a smooth, non-sticky face). The same
  *         layer feeds `buildDoorEntities` (door.ts), which recognizes
- *         each non-overlapping 2×2 block as one door world object with an
+ *         each non-overlapping top-over-bottom 1×2 stack as one door
+ *         world object with an
  *         open/closed state (doors start closed; toggling later must
  *         rebuild the grid).
  * An AABB "touches" a slope when its extreme corner crosses into the solid
@@ -188,16 +190,17 @@ export const TILE_INTERACTION = 315;
  * `apps/server/src/game/run-results.ts`).
  */
 export const TILE_ENDGAME = 404;
-/** Door tile, top-left half of the 2×2 door block (gids 375/376 on the top
- * row). Door gids are solid: a closed door blocks the player, and
+/** Door tile, top cell of a door stack (gids 375/376). A door is one tile
+ * wide and two tall — 375 above 401; the door gids are solid: a closed
+ * door blocks the player, and
  * `buildTileGrid` folds all four gids into the single TILE_DOOR kind (see
  * FOLD_TO_DOOR). */
 export const TILE_DOOR_TOP_LEFT = 375;
-/** Door tile, top-right half of the 2×2 door block. */
+/** Door tile, alternate top cell of a door stack (gids 375/376). */
 export const TILE_DOOR_TOP_RIGHT = 376;
-/** Door tile, bottom-left half of the 2×2 door block (gids 401/402 on the bottom row). */
+/** Door tile, bottom cell of a door stack (gids 401/402). */
 export const TILE_DOOR_BOTTOM_LEFT = 401;
-/** Door tile, bottom-right half of the 2×2 door block. */
+/** Door tile, alternate bottom cell of a door stack (gids 401/402). */
 export const TILE_DOOR_BOTTOM_RIGHT = 402;
 /**
  * The single solid kind standing for all four door gids: `buildTileGrid`

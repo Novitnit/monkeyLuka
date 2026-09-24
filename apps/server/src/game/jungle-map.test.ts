@@ -71,7 +71,7 @@ describe("jungle-map loader", () => {
     gids[5] = TILE_STAIRS; // 288
     gids[6] = TILE_STAIRS_MIRROR; // 289
     gids[7] = TILE_SLOPE_SHALLOW_MIRROR; // 290
-    // Row 1: a 2×2 door block + a 464 pit.
+    // Row 1: two 1×2 door stacks (375 above 401) + a 464 pit.
     gids[width + 2] = TILE_DOOR_TOP_LEFT;
     gids[width + 3] = TILE_DOOR_TOP_RIGHT;
     gids[2 * width + 2] = TILE_DOOR_BOTTOM_LEFT;
@@ -108,7 +108,7 @@ describe("jungle-map loader", () => {
       if (kind === TILE_DEAD_ZONE) pits += 1;
     }
     expect(solid).toBe(2); // 57 + 65 folded
-    expect(doors).toBe(4); // the whole 2×2 block folds
+    expect(doors).toBe(4); // the door stacks fold into four solid cells
     expect(slopes).toBe(6); // every slope kind preserved
     expect(pits).toBe(1);
     // The 315 interaction tile never reaches the collision grid.
@@ -153,7 +153,7 @@ describe("jungle-map loader", () => {
 
   test("named room objects link the signposts and doors they contain", () => {
     // Synthetic map: a `room` objectgroup with one rectangle (room1) over a
-    // 315 signpost and a 2×2 door block. The loader must surface all three
+    // 315 signpost and a 1×2 door stack. The loader must surface all three
     // (roomObjects / interactions / doors), and grouping must link that
     // room's signpost to its door 1-to-1 — the room1 gate shape, built
     // in-test so map edits can't change it.
@@ -162,9 +162,7 @@ describe("jungle-map loader", () => {
     const gids = new Array<number>(width * height).fill(0);
     gids[4 * width + 2] = TILE_INTERACTION; // signpost at (2, 4)
     gids[1 * width + 8] = TILE_DOOR_TOP_LEFT;
-    gids[1 * width + 9] = TILE_DOOR_TOP_RIGHT;
     gids[2 * width + 8] = TILE_DOOR_BOTTOM_LEFT;
-    gids[2 * width + 9] = TILE_DOOR_BOTTOM_RIGHT;
     const raw = rawMap(width, height, gids, [
       // room1: 160×96 px starting at (32, 16) — contains both entities' centers.
       { id: 1, name: "room1", x: 32, y: 16, width: 160, height: 96 },

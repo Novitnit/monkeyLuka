@@ -98,8 +98,8 @@ function readTrapSpikeRunNumber(
  * Recognize every Trap_Spike_Run in a `trap` objectgroup. Objects are
  * matched by exact name (`Trap_Spike_Run`); an object with missing or
  * invalid speed properties is skipped — a misconfigured trap is dropped,
- * mirroring how `buildDoorEntities` only recognizes complete 2×2 door
- * blocks. Future trap types get their own builders over the same raw
+ * mirroring how `buildDoorEntities` only recognizes complete 1×2 door
+ * stacks. Future trap types get their own builders over the same raw
  * `TrapObjectAnnotation`s.
  */
 export function buildTrapSpikeRuns(

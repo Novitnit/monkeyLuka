@@ -14,6 +14,7 @@ import type {
   TrapSpikeRunEntity,
 } from "@monkeyluka/shared";
 import type { CollisionDebug } from "../collision/collision-debug";
+import type { DoorView } from "../door/door-render";
 import type { FinishOverlay } from "../finish/finish-overlay";
 import { PLAYER_SPAWN, type Player } from "../player/player";
 import type { RemotePlayerView } from "../player/remote-players";
@@ -93,11 +94,26 @@ export interface JungleSceneState {
   /**
    * The collision-debug overlay handle (always created; visibility gated by
    * the NEXT_PUBLIC_DEBUG flag). The door-open sync drives it via
-   * `hideDoor`: an opened door's purple 2×2 perimeter is dropped so the
+   * `hideDoor`: an opened door's purple perimeter is dropped so the
    * debug lines stop describing the passable doorway — the door's tile art
    * itself keeps rendering as usual.
    */
   collisionDebug: CollisionDebug | null;
+  /**
+   * Container holding the door sprites (see door-render.ts): a transform
+   * twin of `rooms[0]` — added after every room but before the player
+   * layer, so doors draw over the map art (their tileset art is skipped by
+   * the renderer) and under the player sprites (see create.ts).
+   */
+  doorLayer: Phaser.GameObjects.Container | null;
+  /**
+   * One `DoorView` per door, keyed by `doorKey(tx, ty)` — the same key as
+   * the synced `JungleState.doors` map and `state.openDoors`. The door
+   * sprite starts on frame 0 (closed) and, when the door opens, plays its
+   * one-shot opening animation and hides on completion (driven by
+   * `syncOpenDoors`, see door-open.ts).
+   */
+  doorViews: Map<string, DoorView> | null;
   /**
    * Doors already applied on this client (keyed by `doorKey(tx, ty)`):
    * once the synced schema reports a door open, its grid cells are cleared
@@ -217,6 +233,8 @@ export function createJungleSceneState(): JungleSceneState {
     movePlatformDebug: null,
     standingMovePlatformId: null,
     collisionDebug: null,
+    doorLayer: null,
+    doorViews: null,
     openDoors: new Set(),
     playerLayer: null,
     rooms: null,

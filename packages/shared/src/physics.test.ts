@@ -2188,7 +2188,7 @@ describe("door entities", () => {
     TILE_DOOR_BOTTOM_RIGHT,
   ];
 
-  /** Places a 2×2 door block with its top-left corner at (tx, ty). */
+  /** Places a 1×2 door stack (a TOP gid above a BOTTOM gid) at (tx, ty). */
   const placeDoor = (
     gids: number[],
     width: number,
@@ -2196,14 +2196,12 @@ describe("door entities", () => {
     ty: number,
   ): void => {
     gids[ty * width + tx] = TILE_DOOR_TOP_LEFT;
-    gids[ty * width + tx + 1] = TILE_DOOR_TOP_RIGHT;
     gids[(ty + 1) * width + tx] = TILE_DOOR_BOTTOM_LEFT;
-    gids[(ty + 1) * width + tx + 1] = TILE_DOOR_BOTTOM_RIGHT;
   };
 
-  test("recognizes a 2×2 block of the four gids as one door", () => {
-    // Canonical placement: 375,376 / 401,402 with the top-left at (2, 3)
-    // in an 8×8 layer.
+  test("recognizes a 1×2 stack (375 above 401) as one door", () => {
+    // Canonical placement: 375 over 401 with the top tile at (2, 3)
+    // in an 8×8 layer — the layout the map now stacks doors in.
     const gids = new Array<number>(8 * 8).fill(0);
     placeDoor(gids, 8, 2, 3);
     const doors = buildDoorEntities(layer(8, 8, gids));
@@ -2211,7 +2209,7 @@ describe("door entities", () => {
     expect(doors[0]).toMatchObject({
       tx: 2,
       ty: 3,
-      cols: 2,
+      cols: 1,
       rows: 2,
       state: "closed",
     });
@@ -2221,20 +2219,20 @@ describe("door entities", () => {
     expect(isDoorTileGid(TILE_SOLID)).toBe(false);
   });
 
-  test("ignores non-door gids and partial blocks", () => {
-    // Two half-doors (one column each) plus a stray top half with a solid
-    // under it: none form a full 2×2 door.
+  test("ignores non-door gids and partial stacks", () => {
+    // Half-doors: a top tile with no bottom under it, a bottom tile with
+    // no top above it, and a stray solid tile: none form a 1×2 stack.
     const gids = new Array<number>(8 * 8).fill(0);
     gids[10] = TILE_SOLID;
-    gids[3 * 8 + 5] = TILE_DOOR_TOP_LEFT;
-    gids[3 * 8 + 6] = TILE_DOOR_TOP_RIGHT;
-    gids[4 * 8 + 7] = TILE_DOOR_BOTTOM_LEFT;
+    gids[3 * 8 + 5] = TILE_DOOR_TOP_LEFT; // top with empty below
+    gids[3 * 8 + 6] = TILE_DOOR_TOP_RIGHT; // top with empty below
+    gids[4 * 8 + 7] = TILE_DOOR_BOTTOM_LEFT; // bottom with empty above
     expect(buildDoorEntities(layer(8, 8, gids))).toHaveLength(0);
   });
 
   test("flush-adjacent doors are separate entities", () => {
-    // Two doors sharing an edge: (1,2) and (3,2) — the greedy 2×2 scan
-    // claims each 2×2 once instead of re-reading overlapping windows.
+    // Two stacks sharing an edge: (1,2) and (3,2) — the greedy scan
+    // claims each 1×2 stack once instead of re-reading overlapping reads.
     const gids = new Array<number>(8 * 8).fill(0);
     placeDoor(gids, 8, 1, 2);
     placeDoor(gids, 8, 3, 2);
@@ -2301,7 +2299,7 @@ describe("door entities", () => {
   });
 
   test("a player cannot cling to a closed door's face where it continues onto a wall", () => {
-    // The real map's door (2×2 block) sits flush on top of a solid wall
+    // The real map's door (1×2 stack) sits flush on top of a solid wall
     // column, so the door's side faces and the wall's face are one
     // continuous surface. The grab probe is a 2px strip at the box's side
     // edge spanning the box's full height: beside the door's bottom row it
@@ -2350,7 +2348,7 @@ describe("door entities", () => {
   });
 
   test("a player cannot walk through a closed door", () => {
-    // Door block (2×2 of door gids) at rows 1-2, cols 2-3 — the player
+    // Door stack (1×2 of door gids) at rows 1-2, col 2 — the player
     // walks right into its face and must stop, exactly like a wall
     // (door left face at x=2*16; collider half-width 5 → center stops at
     // 32-5=27).
@@ -2367,10 +2365,10 @@ describe("door entities", () => {
     expect(state.grounded).toBe(true);
   });
 
-  test("a door block's identity key is its top-left cell", () => {
-    // A 2×2 door placed at (29, 8) — the position the shipped map's room1
+  test("a door block's identity key is its top cell", () => {
+    // A 1×2 door placed at (29, 8) — the position the shipped map's room1
     // gate used — built here synthetically so a map edit can't move it:
-    // the block is still exactly one entity and its wire/schema key is
+    // the stack is still exactly one entity and its wire/schema key is
     // "29,8".
     const gids = new Array<number>(40 * 10).fill(0);
     placeDoor(gids, 40, 29, 8);
@@ -2383,9 +2381,9 @@ describe("door entities", () => {
   });
 
   test("clearDoorFromGrid makes a closed door's doorway passable", () => {
-    // Mirror of the closed-door test: the four gids fold into TILE_DOOR and
-    // a box overlapping the block reads solid, until the door is opened —
-    // clearing the four cells to 0 makes the doorway passable. That is
+    // Mirror of the closed-door test: the door gids fold into TILE_DOOR and
+    // a box overlapping the stack reads solid, until the door is opened —
+    // clearing its two cells to 0 makes the doorway passable. That is
     // exactly what both sides apply when every linked showquest is answered:
     // the room clears its validation grid (so reports inside the doorway
     // aren't buried-in-geometry) and each client clears its prediction grid.
@@ -2410,16 +2408,14 @@ describe("door entities", () => {
 });
 
 describe("door-link groups (room objectgroup ↔ tiles)", () => {
-  /** Builds a 6×6 layer with a 315 showquest tile at (1,4) and a 2×2 door block at (3,1). */
+  /** Builds a 6×6 layer with a 315 showquest tile at (1,4) and a 1×2 door stack at (3,1). */
   const linkLayer = (): CollisionLayerData => {
     const width = 6;
     const height = 6;
     const gids = new Array<number>(width * height).fill(0);
     gids[4 * width + 1] = TILE_INTERACTION;
     gids[1 * width + 3] = TILE_DOOR_TOP_LEFT;
-    gids[1 * width + 4] = TILE_DOOR_TOP_RIGHT;
     gids[2 * width + 3] = TILE_DOOR_BOTTOM_LEFT;
-    gids[2 * width + 4] = TILE_DOOR_BOTTOM_RIGHT;
     return layer(width, height, gids);
   };
 
@@ -2431,7 +2427,7 @@ describe("door-link groups (room objectgroup ↔ tiles)", () => {
     const groups = groupRoomObjectsByName([room1], doors, interactions);
 
     // room1 encloses the whole layer: its 315 signpost center (24, 72) and
-    // the door block center (64, 32) both land inside, so the group links
+    // the door stack center (56, 32) both land inside, so the group links
     // 1 showquest to 1 door — the real map's shape in miniature.
     expect(groups).toHaveLength(1);
     expect(groups[0]!.name).toBe("room1");

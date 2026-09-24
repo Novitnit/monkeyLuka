@@ -198,30 +198,65 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   turned into door-link groups by `groupRoomObjectsByName` in
   `@monkeyluka/shared`: each named
   rect collects the entities whose centers fall inside it (a 315 signpost
-  tile, a 2×2 door block) — the real map's two `room1` rects (one over the
+  tile, a 1×2 door stack) — the real map's two `room1` rects (one over the
   signpost, one over the door) collate into one group that thus links its
   sole signpost to its sole door. The room's `QuestGate` reads
   the very same groups: once every showquest interaction linked to a door
   has been answered correctly it opens the door, flipping the synced
   `JungleState.doors` entry to `open`. The client applies opened doors via
   `scene/update.ts` → `src/game/door/door-open.ts`, driven by that schema
-  every frame: `clearDoorFromGrid` zeroes the door's four cells in the
+  every frame: `clearDoorFromGrid` zeroes the door's two cells in the
   local prediction grid (the mirror of what the room does to its
-  validation grid, so the doorway is passable on both sides), while the
-  door's tile art keeps rendering as usual — only its PURPLE debug
-  perimeter is dropped (`CollisionDebug.hideDoor` in
+  validation grid, so the doorway is passable on both sides), drops the
+  door's PURPLE debug perimeter (`CollisionDebug.hideDoor` in
   `src/game/collision/collision-debug.ts`, which draws each door's lines
   on their own graphics so an opened door's lines come off without
-  touching the overlay's other segments), so the debug lines stop drawing
-  collision at the passable doorway. Tracked in `state.openDoors` so each
+  touching the overlay's other segments), and plays the door's one-shot
+  opening animation (`state.doorViews[key].playOpening()` — see below), so
+  the debug lines stop drawing collision at the passable doorway while the
+  door art lifts out of the way. Tracked in `state.openDoors` so each
   open applies exactly once; because it is schema state, a client that
-  joins after a door opened still finds it passable. The
+  joins after a door opened still finds it passable (its door sprite is
+  born hidden — no animation replays). The
   groups ride on `state.doorGroups` (`scene/state.ts`) and, when
   `NEXT_PUBLIC_DOOR_DEBUG` is "1"/"true" (`scene/debug.ts`
   `isDoorDebugEnabled`, option `{ doorDebug?: boolean }`),
   `src/game/door/door-debug.ts` draws one CYAN line from every showquest to
   every door in the same group, clipped per room like the collision overlay,
   and logs each group's counts; runtime toggle `__jungleDoorDebug`.
+
+- **Door art & opening animation**: doors render from the dedicated
+  `Assets/door.png` sheet (served via the `public/door.png` symlink) —
+  `src/game/door/door-render.ts`, the same sprite-sheet pattern as the
+  trap/move-platform render modules. The sheet is a 192×192 image: a 3×3
+  grid of 64×64 cells (row-major) with 9 one-shot opening frames tracing
+  the door panel lifting out of its block — frames 0–4 the closed pose,
+  frame 5 the slide start, frames 6–8 progressively revealing the empty
+  doorway. **Each frame is ONE door panel** (the sheet's earliest draft
+  carried two identical panels side-by-side — a double door with a
+  transparent crack — which made every 1×2 stack render as two doors; the
+  art was rebuilt single-leaf from the left panel, stretched to fill the
+  cell). **`map-renderer.ts` skips the door gids** (`isDoorTileGid`)
+  so the sprite is the door's ONLY art — hiding it after the animation
+  leaves a genuinely open doorway instead of the baked-in closed tiles
+  underneath. Each door entity gets a `DoorView` (sprite at the stack's
+  top tile in map-pixel coords, frame 0, scaled a quarter×half so the
+  64×64 cell covers the 1×2-tile 16×32 stack) on a dedicated door layer — a
+  transform twin of room 0 added after every room and before the player
+  layer, like the trap layer (`create.ts` preloads the sheet and calls
+  `registerDoorAnimations` at world build). **The door layer is NOT the
+  top-most art: the `out_tile` decoration layer is lifted out of the
+  per-room rendering** (`renderTiledMap`'s `topTileLayers` option →
+  `TiledMapRender.topLayers`, one whole-map container per layer) and
+  raised above the door layer (`this.children.bringToTop` in create.ts,
+  `OUT_TILE_LAYER_NAME`), so door panels draw BEHIND the level's rim art
+  — the doorway sill/frame tiles stay in front of the closed panel and
+  the panel slides up behind them when opening. When the schema reports a
+  door open, `syncOpenDoors` calls `playOpening()`: the frames 0→8 play
+  once at 12 fps and the sprite hides on the keyed animation-complete
+  event. `DoorView`s hang off `state.doorViews` (a `Map` keyed by
+  `doorKey(tx, ty)`), built against the synced `JungleState.doors` so a
+  door already open at world build is created hidden.
 
 - **Movable traps (trap objectgroup)**: `src/game/trap/trap-spike-run-render.ts`
   renders the map's `trap` objectgroup — each `Trap_Spike_Run` object

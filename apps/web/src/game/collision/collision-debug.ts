@@ -5,10 +5,10 @@
  * (walls) are green, the 110/109/262/287/288/290 slope lines (orange) take over the
  * block boundary wherever they touch a 57 tile, and the dead-zone (464) pit
  * outline is drawn RED (the `hazard` segments from collision-geometry).
- * Each door Entity's 2×2 perimeter is drawn PURPLE on its OWN graphics
+ * Each door Entity's perimeter is drawn PURPLE on its OWN graphics
  * (one per room it crosses), so an opened door's lines can be hidden
  * individually via `hideDoor()` — the overlay then stops drawing
- * collision at a doorway that is now passable, while the door's tile art
+ * collision at a doorway that is now passable, while the door's art
  * keeps rendering.
  *
  * The lines are children of their room containers, so they inherit the
@@ -38,7 +38,7 @@ export interface CollisionDebugOptions {
   diagonalColor?: number;
   /** Dead-zone hazard pit outline color (default red). */
   hazardColor?: number;
-  /** Door Entity 2×2 perimeter color (default purple). */
+  /** Door Entity perimeter color (default purple). */
   doorColor?: number;
   /** Line width in room-local pixels; scales with the room (default 2). */
   lineWidth?: number;
@@ -52,7 +52,7 @@ export interface CollisionDebug {
   readonly enabled: boolean;
   setEnabled(on: boolean): void;
   /**
-   * Hide one door Entity's purple 2×2 perimeter (its synced state is
+   * Hide one door Entity's purple perimeter (its synced state is
    * open): the debug overlay stops drawing collision at a doorway that
    * is now passable. Idempotent; a later `setEnabled(true)` does NOT
    * bring the hidden door's lines back.
@@ -125,7 +125,7 @@ export function createCollisionDebug(
   let enabled = options.enabled ?? true;
   const graphics: Phaser.GameObjects.Graphics[] = [];
   // Per-door purple perimeters, each on its OWN graphics (one entry per room
-  // the 2×2 block crosses), keyed by `doorKey(tx, ty)`, so an opened door's
+  // the door stack crosses), keyed by `doorKey(tx, ty)`, so an opened door's
   // lines can be hidden individually (`hideDoor`) without touching the rest
   // of the overlay. `hiddenDoors` keeps the hidden set authoritative, so a
   // later `setEnabled(true)` doesn't resurrect an open door's lines.
@@ -182,7 +182,7 @@ export function createCollisionDebug(
     rooms[index].add(overlay);
 
     // Door perimeters come from `CollisionGeometry.doors` (per Entity, not
-    // flat segments like the 464 outline): each door's 2×2 perimeter is
+    // flat segments like the 464 outline): each door's perimeter is
     // clipped into the rooms it crosses and drawn on its own graphics
     // object, keyed by `doorKey(tx, ty)` — so when the synced schema
     // reports the door open, `hideDoor` can drop exactly those lines.

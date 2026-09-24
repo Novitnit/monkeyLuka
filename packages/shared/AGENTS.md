@@ -72,13 +72,13 @@ penetration helpers + `wallBeside` wall-adjacency probe, split into
 zone + the shared box-overlap / cell-walk / pixel-mask helpers
 `cellOverlapRect`, `forEachOverlappedCell`, `maskRectRange`, `maskForKind`), `geometry.ts`,
 `point.ts`, `box.ts`, `support.ts`, `penetration.ts`), `door.ts` (door
-entities: each non-overlapping 2×2 block of the door gids 375/376/401/402
+entities: each non-overlapping 1×2 stack of door gids (375 above 401)
 is one open/closed door world object via `buildDoorEntities`, keyed by
-the top-left cell (`doorKey`); a closed
+the top cell (`doorKey`); a closed
 door is solid but non-sticky: `buildTileGrid` folds the gids into the
 `TILE_DOOR` kind, a full block that blocks walking yet can't be grabbed
 by the wall-cling. `clearDoorFromGrid` opens a door in a collision grid —
-zeroes its four cells — which is what the server applies to its validation
+zeroes its two cells — which is what the server applies to its validation
 grid and each client to its prediction grid when the answers open the
 door), `door-links.ts` (door-link groups: each `room` objectgroup
 rectangle is a named region that collects the showquest interactions and
@@ -157,7 +157,7 @@ or Colyseus imports — so it can also be unit-tested directly.
   The web's `collision-geometry.ts` re-exports its `WALL_TILE`/`DIAGONAL_*`
   names from these so rendering and physics can't drift. The debug overlay
   draws the block edges (green/blue), the slope lines (orange), the 464 pit
-  outline (red), and each door entity's purple 2×2 perimeter.
+  outline (red), and each door entity's purple perimeter.
 - `buildTileGrid(layer)` → `SolidGrid`; `isPointSolid` / `isBoxSolid` for
   queries; `isBoxInDeadZone` for the dead-zone touch probe (the web client
   calls it every frame to gate the automatic checkpoint return on 464

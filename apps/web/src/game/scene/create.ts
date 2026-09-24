@@ -39,6 +39,11 @@ import {
 import { buildCollisionGeometry } from "../collision/collision-geometry";
 import { createCollisionDebug } from "../collision/collision-debug";
 import { createDoorDebug } from "../door/door-debug";
+import {
+  DOOR_TEXTURE,
+  createDoorViews,
+  registerDoorAnimations,
+} from "../door/door-render";
 import { createFinishOverlay } from "../finish/finish-overlay";
 import { createQuestBox } from "../quest/quest-box";
 import { createRunTimer } from "../timer/run-timer";
@@ -55,7 +60,7 @@ import {
   registerTrapSpikeRunAnimations,
 } from "../trap/trap-spike-run-render";
 import type { JungleGameOptions, JungleRoom } from "../jungle-game";
-import { MAP_DIR, MAP_FILE, PLAYER_DIR, TRAP_DIR } from "./constants";
+import { DOOR_SPRITE, MAP_DIR, MAP_FILE, OUT_TILE_LAYER_NAME, PLAYER_DIR, TRAP_DIR } from "./constants";
 import {
   isCollisionDebugEnabled,
   isDebugEnabled,
@@ -92,12 +97,15 @@ export function createSceneCreate(
     this.load.image(PLAYER_JUMP_TEXTURE, `${PLAYER_DIR}/sheets/jump.png`);
     // The movable-trap spike sheet (served via the `public/trap` symlink),
     // preloaded so trap views can be built from it once the world loads.
-    this.load.image(TRAP_SPIKE_RUN_TEXTURE, `${TRAP_DIR}/Trap_Spike_Run.png`);
-    // The move-platform sheet (same `public/trap` symlink): a 256×16 strip
+    this.load.image(TRAP_SPIKE_RUN_TEXTURE, `${TRAP_DIR}/Trap_Spike_Run.png`);    // The move-platform sheet (same `public/trap` symlink): a 256×16 strip
     // of sixteen 16×16 slab frames, registered as its looping idle
     // animation by `registerMovePlatformAnimations` (create.ts, right
     // before the views are built).
     this.load.image(MOVE_PLATFORM_TEXTURE, `${TRAP_DIR}/movePlatformF.png`);
+    // The door sheet (the `public/door.png` symlink into Assets/door.png):
+    // a 3×3 grid of 64×64 cells, frame 0 the idle/closed pose and frames
+    // 0–8 the one-shot opening animation (see door-render.ts).
+    this.load.image(DOOR_TEXTURE, DOOR_SPRITE);
     this.load.once(phaser.Loader.Events.COMPLETE, () => {
       void (async () => {
         try {
@@ -114,6 +122,10 @@ export function createSceneCreate(
             roomWidth: ROOM_WIDTH,
             roomHeight: ROOM_HEIGHT,
             gap: 0,
+            // The front decoration layer is lifted out of the per-room
+            // rendering and raised over the door layer in create() (see
+            // below), so doors render BEHIND the rim art.
+            topTileLayers: [OUT_TILE_LAYER_NAME],
           });
 
           setDebugHandle("__jungleRender", render);
@@ -155,7 +167,7 @@ export function createSceneCreate(
 
           // Door-link groups: each room objectgroup rectangle is a named
           // region that contains the tile entities whose centers fall
-          // inside it — a 315 signpost tile and a 2×2 door block. Objects
+          // inside it — a 315 signpost tile and a 1×2 door stack. Objects
           // that share a name form one gate: the showquest gating that
           // door. The real map has a single room object named `room1` — a
           // whole-map bounds rect (0,0,496M-CM-^-272) containing the signpost
@@ -183,6 +195,41 @@ export function createSceneCreate(
               {linkColor:0xbb68f2}
             );
             setDebugHandle("__jungleDoorDebug", doorDebug);
+          }
+
+          // Door art: the map's 1×2 door stacks (a 375 tile above a 401
+          // tile, see buildDoorEntities) render from the dedicated
+          // `door.png` sheet (the renderer skips the door gids, see
+          // map-renderer.ts), one sprite per door on their own layer — a
+          // transform twin of room 0 — added after every room and before
+          // the player layer, so doors draw over the map art and under the
+          // player sprites, exactly like the trap layer below. Each sprite
+          // starts on frame 0 (the closed door); when the synced schema
+          // reports the door open, `syncOpenDoors` plays the one-shot
+          // opening animation and the sprite hides on completion (see
+          // door-open.ts). A door already open at world build (late join)
+          // is created hidden instead.
+          registerDoorAnimations(this);
+          if (doors.length > 0) {
+            const doorLayer = this.add.container(
+              render.rooms[0].x,
+              render.rooms[0].y,
+            );
+            doorLayer.setScale(render.scale);
+            state.doorLayer = doorLayer;
+            state.doorViews = createDoorViews(
+              this,
+              doors,
+              doorLayer,
+              room.state?.doors,
+            );
+            // Lift the map's front decoration layer (`out_tile`) above the
+            // door layer: the doors' 1×2 stacks sit flush against the rim
+            // art, so the panel must slide up BEHIND it, and the doorway
+            // sill (a rim tile) must stay visible over the door's bottom.
+            for (const top of render.topLayers) {
+              this.children.bringToTop(top.container);
+            }
           }
 
           // Movable traps: the `trap` objectgroup's `Trap_Spike_Run`

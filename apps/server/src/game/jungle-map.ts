@@ -47,7 +47,7 @@ export interface JungleMapData {
   grid: SolidGrid;
   /** Interaction tiles (gid → action registry) built from the same layer. */
   interactions: InteractionGrid;
-  /** Recognized door entity blocks (2×2 of door gids) from the same layer. */
+  /** Recognized door entity stacks (1×2 of door gids) from the same layer. */
   doors: DoorEntity[];
   /**
    * The room objectgroup's raw objects (Tiled rectangles with names) —
