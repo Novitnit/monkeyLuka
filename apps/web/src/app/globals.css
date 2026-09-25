@@ -37,6 +37,12 @@
 
 html {
   background-color: var(--background);
+  /* iOS Safari touch behavior (game-first — long-press text selection on the
+     content pages is traded away): no double-tap zoom, no long-press
+     image/copy callout over the Phaser canvas, and no font re-inflation on
+     the first paint before the player rotates the phone. */
+  -webkit-text-size-adjust: 100%;
+  -webkit-touch-callout: none;
 }
 
 body {
@@ -60,6 +66,8 @@ body {
      the page is deliberately sized to the viewport (h-dvh, overflow
      hidden), so nothing may scroll-chained into it. */
   overscroll-behavior: none;
+  /* ...and no double-tap zoom delay on iOS (panning/scroll still work). */
+  touch-action: manipulation;
 }
 
 ::selection {

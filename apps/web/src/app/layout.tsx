@@ -20,6 +20,22 @@ export const metadata: Metadata = {
     template: "%s · monkeyLuka",
   },
   description: "A monkey-powered multiplayer game.",
+  // iOS standalone (Add to Home Screen): no browser chrome, title on the
+  // home-screen icon, and a transparent status bar so the canvas runs
+  // edge-to-edge under the notch/home indicator (paired with the
+  // `viewportFit: "cover"` viewport above). See app/manifest.ts + the
+  // apple-icon.png convention for the rest of the install path.
+  appleWebApp: {
+    capable: true,
+    title: "monkeyLuka",
+    statusBarStyle: "black-translucent",
+  },
+  other: {
+    // Next renders `appleWebApp.capable` under the modern unprefixed name
+    // (mobile-web-app-capable); classic iOS standalone also reads Apple's
+    // legacy prefixed meta, so keep both.
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

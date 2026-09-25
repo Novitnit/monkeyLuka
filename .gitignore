@@ -10,8 +10,9 @@ dist/
 build/
 *.tsbuildinfo
 
-# Runtime data (the server's run-results SQLite lives here)
-apps/server/data/
+# Runtime data (the runs SQLite lives in the repo-root data/ dir — the
+# compose bind mount ./data:/app/data)
+data/
 
 # Env files
 .env

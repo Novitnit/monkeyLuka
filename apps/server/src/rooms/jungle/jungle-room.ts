@@ -51,6 +51,16 @@ import type { ServerPlayer } from "./server-player";
  */
 const FAILING_REPORTS_TO_STOP = 2;
 
+/**
+ * Wholesale anti-cheat off-switch: with `JUNGLE_DISABLE_ANTI_CHEAT=1` the
+ * room accepts every `player:input` report as-is — no flood rate limit, seq
+ * ordering, teleport/speed/geometry validation, or violation kicks (dev /
+ * testing only; never set in production). Malformed payloads are still
+ * dropped (they'd corrupt the broadcast) and the display-only velocity
+ * clamp still runs.
+ */
+const ANTI_CHEAT_DISABLED = process.env.JUNGLE_DISABLE_ANTI_CHEAT === "1";
+
 const debug = true
 
 /**
@@ -64,6 +74,8 @@ const debug = true
  * that pass, and "stops" the player at the last accepted position when one
  * fails while counting the violation toward a kick. Client-supplied positions
  * are never written to the schema unvalidated.
+ * `JUNGLE_DISABLE_ANTI_CHEAT=1` turns the per-report validation + kick off
+ * entirely: every report is accepted (dev/testing only).
  *
  * Split into focused modules under this directory (see `index.ts`):
  * `server-player.ts` holds the per-client bookkeeping types, `input.ts` the
@@ -103,7 +115,8 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
   private map!: JungleMapData;
   private quests!: JungleQuestionBank;
   private gate!: QuestGate;
-  /** Completed-run persistence (SQLite under apps/server/data). */
+  /** Completed-run persistence (SQLite in the repo-root `data/` dir — the
+   * compose bind mount `/app/data` in Docker). */
   private results!: RunResultsStore;
   private readonly sim = new Map<string, ServerPlayer>();
 
@@ -509,6 +522,9 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
    * after a stop the player only moves again once a report passes validation
    * (a one-off glitch resumes in ~one report interval; sustained abnormal
    * movement freezes the player and escalates to a kick).
+   *
+   * With `JUNGLE_DISABLE_ANTI_CHEAT=1` all validation is skipped: every
+   * report is accepted and broadcast (dev/testing).
    */
   private onPlayerInput(client: Client, message: unknown): void {
     const player = this.sim.get(client.sessionId);
@@ -516,74 +532,86 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
 
     const payload = sanitizePlayerInput(message);
     if (!payload) {
-      this.registerViolation(client, player, "malformed");
+      // Malformed reports are never broadcast (they'd corrupt the schema);
+      // when the anti-cheat is enabled this also registers a violation.
+      if (!ANTI_CHEAT_DISABLED) {
+        this.registerViolation(client, player, "malformed");
+      }
       return;
     }
 
     const now = Date.now();
 
-    // Flood rate limit: keep only arrivals inside the last second.
-    player.inputStamps = player.inputStamps.filter(
-      (stamp) => stamp >= now - 1000,
-    );
-    if (player.inputStamps.length >= ANTI_CHEAT.maxInputRatePerSecond) {
-      this.registerViolation(client, player, "input-flood");
-      return;
-    }
-    player.inputStamps.push(now);
-
-    // Ordering: WebSocket delivery is ordered, so a non-increasing seq means
-    // the client is retransmitting or forging — drop silently.
-    if (payload.seq <= player.lastSeq) return;
-    player.lastSeq = payload.seq;
-
-    // Trajectory validation against the last accepted report: the reported
-    // spot must be out of solid geometry, near the last accepted position,
-    // and reachable within the physical speed ceiling given the wall-clock
-    // gap between accepted reports. The gap is floored by the client's own
-    // report cadence (see below): the browser sends every INPUT_INTERVAL_MS
-    // and seq must rise by exactly one per report, so a jittery tunnel that
-    // delivers a 50 ms-spaced stream back-to-back can never under-count the
-    // time a legitimately-spaced trajectory took.
-    const wallDt =
-      player.lastValidAt > 0 ? (now - player.lastValidAt) / 1000 : null;
-    const cadenceDt =
-      (payload.seq - player.lastSeq) * (INPUT_INTERVAL_MS / 1000);
-    const dt =
-      player.lastValidAt > 0 ? Math.max(wallDt ?? 0, cadenceDt) : null;
-    const violations = validatePositionReport(
-      this.map.grid,
-      { px: payload.px, py: payload.py },
-      { x: player.lastValid.x, y: player.lastValid.y },
-      { px: player.lastValid.x, py: player.lastValid.y },
-      dt,
-      DEFAULT_PLAYER_PHYSICS,
-    );
-    if (violations.length > 0) {
-      if (process.env.JUNGLE_DEBUG_VALIDATION) {
-        console.log(
-          `[jungle:debug] seq=${payload.seq} reported=(${payload.px.toFixed(1)},${payload.py.toFixed(1)}) accepted=(${player.lastValid.x.toFixed(1)},${player.lastValid.y.toFixed(1)}) dt=${dt?.toFixed(3)} flags=${violations.join("+")} violations=${player.violations + 1}`,
-        );
+    // Anti-cheat enforcement (flood limit, seq ordering, teleport/speed/
+    // geometry trajectory checks, and the stop-and-kick escalation below).
+    // `JUNGLE_DISABLE_ANTI_CHEAT=1` (dev/testing) disables it all: every
+    // report is accepted as-is — no violations, no stops, no kicks. The
+    // velocity clamp and the `lastValid`/spawn re-baseline still run, so
+    // the interaction probe and checkpoint flow keep working.
+    if (!ANTI_CHEAT_DISABLED) {
+      // Flood rate limit: keep only arrivals inside the last second.
+      player.inputStamps = player.inputStamps.filter(
+        (stamp) => stamp >= now - 1000,
+      );
+      if (player.inputStamps.length >= ANTI_CHEAT.maxInputRatePerSecond) {
+        this.registerViolation(client, player, "input-flood");
+        return;
       }
-      // Absorb a single isolated failing report: a jittery transport can
-      // make ONE honest report read as teleport/speed (a long delivery
-      // stall mid-fall, a burst that the cadence floor can't fully span).
-      // Only `FAILING_REPORTS_TO_STOP` consecutive failures mean sustained
-      // abnormal movement — then stop the player (x/y in the schema still
-      // hold the last accepted position, so zeroing the velocity is what
-      // freezes the broadcast) and count a violation as before.
-      player.failStreak += 1;
-      if (player.failStreak < FAILING_REPORTS_TO_STOP) return;
-      const info = this.state.players.get(client.sessionId);
-      if (info) {
-        writeIfChanged(info, "vx", 0);
-        writeIfChanged(info, "vy", 0);
-      }
-      this.registerViolation(client, player, violations.join("+"));
-      return;
-    }
+      player.inputStamps.push(now);
 
-    player.failStreak = 0;
+      // Ordering: WebSocket delivery is ordered, so a non-increasing seq
+      // means the client is retransmitting or forging — drop silently.
+      if (payload.seq <= player.lastSeq) return;
+      player.lastSeq = payload.seq;
+
+      // Trajectory validation against the last accepted report: the
+      // reported spot must be out of solid geometry, near the last accepted
+      // position, and reachable within the physical speed ceiling given the
+      // wall-clock gap between accepted reports. The gap is floored by the
+      // client's own report cadence (see below): the browser sends every
+      // INPUT_INTERVAL_MS and seq must rise by exactly one per report, so a
+      // jittery tunnel that delivers a 50 ms-spaced stream back-to-back can
+      // never under-count the time a legitimately-spaced trajectory took.
+      const wallDt =
+        player.lastValidAt > 0 ? (now - player.lastValidAt) / 1000 : null;
+      const cadenceDt =
+        (payload.seq - player.lastSeq) * (INPUT_INTERVAL_MS / 1000);
+      const dt =
+        player.lastValidAt > 0 ? Math.max(wallDt ?? 0, cadenceDt) : null;
+      const violations = validatePositionReport(
+        this.map.grid,
+        { px: payload.px, py: payload.py },
+        { x: player.lastValid.x, y: player.lastValid.y },
+        { px: player.lastValid.x, py: player.lastValid.y },
+        dt,
+        DEFAULT_PLAYER_PHYSICS,
+      );
+      if (violations.length > 0) {
+        if (process.env.JUNGLE_DEBUG_VALIDATION) {
+          console.log(
+            `[jungle:debug] seq=${payload.seq} reported=(${payload.px.toFixed(1)},${payload.py.toFixed(1)}) accepted=(${player.lastValid.x.toFixed(1)},${player.lastValid.y.toFixed(1)}) dt=${dt?.toFixed(3)} flags=${violations.join("+")} violations=${player.violations + 1}`,
+          );
+        }
+        // Absorb a single isolated failing report: a jittery transport can
+        // make ONE honest report read as teleport/speed (a long delivery
+        // stall mid-fall, a burst that the cadence floor can't fully span).
+        // Only `FAILING_REPORTS_TO_STOP` consecutive failures mean sustained
+        // abnormal movement — then stop the player (x/y in the schema still
+        // hold the last accepted position, so zeroing the velocity is what
+        // freezes the broadcast) and count a violation as before.
+        player.failStreak += 1;
+        if (player.failStreak < FAILING_REPORTS_TO_STOP) return;
+        const info = this.state.players.get(client.sessionId);
+        if (info) {
+          writeIfChanged(info, "vx", 0);
+          writeIfChanged(info, "vy", 0);
+        }
+        this.registerViolation(client, player, violations.join("+"));
+        return;
+      }
+
+      player.failStreak = 0;
+    }
 
     player.lastValid = {
       x: payload.px,

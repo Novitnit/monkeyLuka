@@ -383,7 +383,7 @@ gated by a pending question — an unfinished showquest doesn't block
 finishing. The room then stamps the **server wall-clock finish moment** on
 the synced `PlayerInfo.finishedAt` and records the run to its **SQLite
 store** (`apps/server/src/game/run-results.ts`, file
-`apps/server/data/jungle-runs.sqlite`, env `JUNGLE_RUN_RESULTS_PATH` — one
+`data/jungle-runs.sqlite` at the repo root — `/app/data` in Docker —, env `JUNGLE_RUN_RESULTS_PATH` — one
 row per session, `time_ms` = `runCompletionTimeMs`: finish − joinedAt + 10s
 per death the room counted, the same penalty the live HUD applies, so the
 saved time equals the readout that stopped). The web client reads the

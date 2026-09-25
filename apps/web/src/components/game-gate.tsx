@@ -12,6 +12,12 @@ import { useMediaQuery } from "@/hooks/use-media-query";
  * running standalone). Desktop / fine-pointer users pass straight through.
  * Browsers can't enter fullscreen without a user gesture, so the gate
  * blocks with instructions + a button instead of forcing silently.
+ *
+ * iOS is special: Safari on iPhone/iPad has no `requestFullscreen()` at all,
+ * so the only full-screen path is an installed Home Screen app (the
+ * standalone PWA unlocked by `(display-mode: standalone)` here). iOS users
+ * who aren't installed get Add-to-Home-Screen steps instead of the
+ * desktop full-screen button.
  */
 export function GameGate({ children }: { children: ReactNode }) {
   const touchDevice = useMediaQuery("(pointer: coarse)");
@@ -23,6 +29,21 @@ export function GameGate({ children }: { children: ReactNode }) {
   const fullscreenAvailable =
     typeof document !== "undefined" &&
     "requestFullscreen" in document.documentElement;
+
+  // iOS Safari on iPhone/iPad exposes no fullscreen API — the Home Screen
+  // app (the manifest's standalone display mode) is the only full-screen
+  // path. iPadOS 13+ hides its iPad in the UA (Mac desktop UA + touchscreen),
+  // hence the maxTouchPoints clause; the feature-detect above still wins for
+  // any platform that does implement requestFullscreen.
+  const isIOS =
+    typeof navigator !== "undefined" &&
+    (/iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
+  // iOS Safari + not installed: nothing the gate can do programmatically —
+  // guide the player through Add to Home Screen (the unlock is the
+  // `standalone` media query flipping true once launched from the icon).
+  const needsInstall = isIOS && !fullscreenAvailable && !standalone;
 
   // Entering fullscreen is a user gesture; orientation lock only works once
   // fullscreen is granted (and only where the platform supports it).
@@ -69,13 +90,29 @@ export function GameGate({ children }: { children: ReactNode }) {
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-zinc-50 compact:text-lg">
-          {portrait ? "Rotate your device" : "Enter full-screen to play"}
+          {portrait
+            ? "Rotate your device"
+            : needsInstall
+              ? "Add monkeyLuka to your Home Screen"
+              : "Enter full-screen to play"}
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-zinc-400 compact:mt-1.5 compact:max-w-xs compact:text-[13px] compact:leading-snug">
           {portrait
             ? "monkeyLuka is played in landscape. Flip your phone sideways — the game unlocks once you're horizontal and full-screen."
-            : "The game runs in full-screen to hide the browser UI. Tap below to go full-screen, then play."}
+            : needsInstall
+              ? "iPhone and iPad Safari has no full-screen mode, so monkeyLuka runs full-screen as a Home Screen app — no notch, no browser bar."
+              : "The game runs in full-screen to hide the browser UI. Tap below to go full-screen, then play."}
         </p>
+        {needsInstall && (
+          <ol className="mx-auto mt-3 max-w-sm space-y-1.5 text-left text-sm leading-relaxed text-zinc-400 compact:mt-2 compact:max-w-xs compact:text-[13px] compact:leading-snug">
+            <li>1. Tap the Share button (square with an up arrow) in Safari.</li>
+            <li>2. Choose “Add to Home Screen”, then tap “Add”.</li>
+            <li>
+              3. Open monkeyLuka from your Home Screen — it launches
+              full-screen in landscape.
+            </li>
+          </ol>
+        )}
       </div>
 
       {fullscreenAvailable ? (
@@ -88,6 +125,10 @@ export function GameGate({ children }: { children: ReactNode }) {
           <IconFullscreen className="size-5 text-zinc-900 compact:size-4" />
           {entering ? "Entering…" : "Enter full-screen"}
         </button>
+      ) : needsInstall ? (
+        <p className="text-sm text-zinc-500 compact:text-xs">
+          The game unlocks automatically once it's opened from the Home Screen.
+        </p>
       ) : (
         <p className="text-sm text-zinc-500 compact:text-xs">
           {"Your browser doesn't support full-screen — use the fullscreen option in your browser's menu, then rotate your device."}

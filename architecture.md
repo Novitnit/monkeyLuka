@@ -219,7 +219,17 @@ shortest-to-longest, read at request time from the server's run-results
 SQLite via `node:sqlite` — see `src/lib/leaderboard.ts`) and `/how-to-play`
 (placeholder). The root layout wraps everything in `GameGate`, which blocks
 touch devices until the viewport is landscape and full-screen (or standalone
-PWA) — no user gesture, no lock, no rendering.
+PWA) — no user gesture, no lock, no rendering. **iOS**: Safari on
+iPhone/iPad has no `requestFullscreen()`, so the gate guides iOS users to
+install the Home Screen app (`app/manifest.ts` → `display: standalone` +
+`orientation: "landscape"`; Apple tags via `metadata.appleWebApp` + the
+`apple-icon.png` convention + a legacy `apple-mobile-web-app-capable` meta
+in `metadata.other`) and only unlocks via `(display-mode: standalone)` once
+they've launched it from the icon. Installed, the app is landscape-locked
+and edge-to-edge under a transparent status bar (`statusBarStyle:
+"black-translucent"` + `viewportFit: "cover"`). Note that Next 16 renders
+`appleWebApp.capable` under the modern unprefixed name — the apple-prefixed
+meta is kept explicitly.
 
 ### 7.2 The play flow
 

@@ -2,12 +2,12 @@
  * Leaderboard reads: the completed jungle runs shown on `/leaderboard`.
  *
  * Completed runs are written by the Colyseus room (apps/server) into
- * `apps/server/data/jungle-runs.sqlite` through Bun's `bun:sqlite` — the
- * schema, the env override and the write path all live in
- * `apps/server/src/game/run-results.ts`, which stays the authoritative
- * source of truth. This module is just the read side: it opens the same
- * file with Node's built-in `node:sqlite` and returns the rows
- * shortest-time-first for the leaderboard page.
+ * `data/jungle-runs.sqlite` at the repo root (the Docker mount `/app/data`)
+ * through Bun's `bun:sqlite` — the schema, the env override and the write
+ * path all live in `apps/server/src/game/run-results.ts`, which stays the
+ * authoritative source of truth. This module is just the read side: it
+ * opens the same file with Node's built-in `node:sqlite` and returns the
+ * rows shortest-time-first for the leaderboard page.
  *
  * Why `node:sqlite` and not `bun:sqlite`? The web app's `next dev`/`build`
  * run on Node (the `next` bin's shebang is `#!/usr/bin/env node` — see
@@ -24,14 +24,16 @@ const RESULTS_PATH_ENV = "JUNGLE_RUN_RESULTS_PATH";
 /**
  * The DB location: the `JUNGLE_RUN_RESULTS_PATH` env override (same
  * variable + semantics as the server — absolute, or relative to THIS app's
- * CWD), else the server's default file `apps/server/data/jungle-runs.sqlite`
- * resolved against the web app's CWD (the dev/build scripts `cd` into
- * `apps/web`, so relative `../server/...` lands on the repo's server app).
+ * CWD), else the default `data/jungle-runs.sqlite` at the repo root. The
+ * dev/build scripts `cd` into `apps/web`, so `../../data` lands on the
+ * repo's `data/` dir; the standalone container's `server.js` chdirs to
+ * `/app/apps/web`, so the same relative path lands on the shared
+ * `/app/data` mount (`data/` there too).
  */
 function resolveResultsPath(): string {
   const override = process.env[RESULTS_PATH_ENV]?.trim();
   if (override) return override;
-  return "../server/data/jungle-runs.sqlite";
+  return "../../data/jungle-runs.sqlite";
 }
 
 /**

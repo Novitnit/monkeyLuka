@@ -125,6 +125,13 @@ only validates each report and relays it:
    escalates to a kick. (`failStreak` on `ServerPlayer` tracks consecutive
    failures; threshold is `FAILING_REPORTS_TO_STOP` in `jungle-room.ts`.)
 
+**Off-switch**: `JUNGLE_DISABLE_ANTI_CHEAT=1` (dev/testing only; never in
+production) skips the whole enforcement chain — flood limit, seq ordering,
+teleport/speed/geometry checks, stops, and kicks — and accepts every report
+as-is. The velocity clamp and the `lastValid`/spawn re-baseline still run
+(interaction probe + checkpoint flow), and malformed payloads are still
+dropped silently. Default off; documented in `apps/server/.env.example`.
+
 `PlayerInfo` is written only from accepted reports; no raw client position ever
 reaches the schema unvalidated. What the server checks is **plausibility**, not
 full reachability: every report is bounded by the physical speed ceiling and
@@ -230,8 +237,8 @@ registered.
 
 `src/game/run-results.ts` wraps `bun:sqlite` (built in — no dependency):
 `initRunResultsDb` opens the file (default
-`apps/server/data/jungle-runs.sqlite` resolved from the module URL, env
-`JUNGLE_RUN_RESULTS_PATH`; `:memory:` for tests; WAL + busy_timeout so
+`data/jungle-runs.sqlite` at the repo root, resolved from the module URL,
+env `JUNGLE_RUN_RESULTS_PATH`; `:memory:` for tests; WAL + busy_timeout so
 several matchmade rooms sharing the file don't fight), creates the `runs`
 table on first open, and returns a `RunResultsStore` the room holds for its
 lifetime (closed in `onDispose`). `record()` upserts one row per session

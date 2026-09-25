@@ -3,8 +3,8 @@
  * small SQLite file, written by the Colyseus room the moment the endgame
  * interaction (gid 404 → "finish") validates. `bun:sqlite` is built into
  * Bun — no dependency, no migration tool: the table is created on first
- * open, and the file lives under `apps/server/data/` (gitignored; override
- * with `JUNGLE_RUN_RESULTS_PATH`).
+ * open, and the file lives in the repo-root `data/` directory (gitignored;
+ * override with `JUNGLE_RUN_RESULTS_PATH`).
  *
  * The recorded time is computed by the room from server wall-clock values
  * (see `runCompletionTimeMs` in @monkeyluka/shared) — never client-
@@ -45,10 +45,12 @@ const RESULTS_PATH_ENV = "JUNGLE_RUN_RESULTS_PATH";
 
 /**
  * Default DB location, resolved against this source file so it works from
- * any CWD: apps/server/src/game → apps/server/data/jungle-runs.sqlite.
+ * any CWD: apps/server/src/game → <repo root>/data/jungle-runs.sqlite
+ * (dev lands on /home/nacha/Code/monkeyLuka/data; the container resolves
+ * the same URL to /app/data/jungle-runs.sqlite).
  */
 const DEFAULT_RESULTS_URL = new URL(
-  "../../data/jungle-runs.sqlite",
+  "../../../../data/jungle-runs.sqlite",
   import.meta.url,
 );
 
@@ -126,8 +128,8 @@ export class RunResultsStore {
 
 /**
  * Open (creating if needed) the run-results store. `path` defaults to
- * `apps/server/data/jungle-runs.sqlite` resolved against this module —
- * robust to any CWD like the map/quest loaders; parent directories are
+ * `data/jungle-runs.sqlite` at the repo root, resolved against this module
+ * — robust to any CWD like the map/quest loaders; parent directories are
  * created on the way.
  */
 export function initRunResultsDb(

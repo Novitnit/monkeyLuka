@@ -38,16 +38,27 @@ services:
       context: .
       dockerfile: apps/server/Dockerfile
     image: monkeyluka-server:latest
+    # Write the runs SQLite as the host user (uid 1000), not root, so the
+    # files it creates in the shared ./data dir are owner-editable by local
+    # dev (bun runs fine as non-root; HOME=/tmp keeps any bun cache out of
+    # the unwritable /root).
+    user: "1000:1000"
     environment:
       # The tunnel route targets server:3001; the app reads COLYSEUS_PORT.
       COLYSEUS_PORT: 3001
+      HOME: /tmp
       # Colyseus handshake origin gate: pages load from monkeyluka.online,
       # so their WebSocket Origin is https://monkeyluka.online (or the
       # server subdomain if visited directly).
       ALLOWED_ORIGIN_HOST: monkeyluka.online,server.monkeyluka.online
+      # Wholesale movement anti-cheat off-switch (dev/testing): propagated
+      # from the gitignored root .env; unset/empty keeps the anti-cheat ON.
+      JUNGLE_DISABLE_ANTI_CHEAT: ${JUNGLE_DISABLE_ANTI_CHEAT:-}
     volumes:
-      # Runs SQLite lives here (server writes, web /leaderboard reads).
-      - jungle-runs:/app/apps/server/data
+      # Runs SQLite lives in the repo-root data/ dir, bind-mounted to /app/data
+      # (dev's `bun run dev` writes the same file as the container's server;
+      # the web /leaderboard container shares the mount).
+      - ./data:/app/data
     networks:
       - tunnel
 
@@ -66,12 +77,10 @@ services:
       # Mirror of the server's origin gate, for the Elysia /api CORS.
       ALLOWED_ORIGIN_HOST: monkeyluka.online,server.monkeyluka.online
     volumes:
-      - jungle-runs:/app/apps/server/data
+      # Same repo-root data/ bind mount — /leaderboard reads the sqlite here.
+      - ./data:/app/data
     networks:
       - tunnel
-
-volumes:
-  jungle-runs:
 
 networks:
   tunnel:

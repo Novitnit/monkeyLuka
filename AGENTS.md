@@ -96,12 +96,21 @@ Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bu
 - **`NEXT_PUBLIC_COLYSEUS_ENDPOINT` is a build ARG** (inlined into the
   browser bundle): `wss://server.monkeyluka.online` lives in the gitignored
   root `.env` (see `.env.example`) — rebuild `next` after changing it.
+- **PWA/iOS metadata** (web manifest, apple standalone tags, apple-touch-icon,
+  GameGate install guidance) lives wholly in `apps/web` and bakes into the
+  `next` image only — `docker compose build next` alone is enough after
+  touching it. Detail in `apps/web/AGENTS.md`.
 - `ALLOWED_ORIGIN_HOST` (compose) gates the Colyseus handshake + `/api`
   CORS: currently `monkeyluka.online,server.monkeyluka.online`.
-- The runs SQLite is a shared named volume (`jungle-runs` mounted at
-  `/app/apps/server/data` in both containers): the server writes it, the
-  web `/leaderboard` reads it. Note the server reads `COLYSEUS_PORT`
-  (default 2567); the tunnel targets 3001.
+- `JUNGLE_DISABLE_ANTI_CHEAT=1` in the root `.env` turns the dockerized
+  server's movement anti-cheat off (compose propagates it, default
+  empty = ON). Dev/testing only — never for real production play.
+- The runs SQLite lives in the repo-root `data/` dir (bind-mounted to
+  `/app/data` in both containers — `${PWD}/data` on the host, i.e. this
+  repo's `data/`): the server writes it, the web `/leaderboard` reads it.
+  The server container runs as the host uid (compose `user: "1000:1000"`)
+  so the sqlite files it writes stay owner-editable in local dev. Note the
+  server reads `COLYSEUS_PORT` (default 2567); the tunnel targets 3001.
 
 ## Testing
 
@@ -123,8 +132,8 @@ Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bu
   marked `override`. `apps/web` uses Next's generated config; don't copy the
   server baseline into it.
 - **Commit `bun.lock`**; don't add `.gitignore` rules beyond the root ones
-  (`.next/`, `node_modules/`, and env files are covered; `apps/server/data/`
-  — the run-results SQLite — is added too).
+  (`.next/`, `node_modules/`, and env files are covered; `data/` — the
+  run-results SQLite — is added too).
 - Keep secrets out of source; use gitignored env files (an `env.example` may be committed).
 - Non-obvious bugs get a write-up in `discoveries/` (one file per discovery —
   format in `discoveries/agents.md`); workspace-specific gotchas (Next.js
@@ -149,14 +158,19 @@ is huge — so burst-delivering high-RTT paths (the Docker/Cloudflare
 tunnel) don't freeze or rubber-band honest players. See
 `discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`.
 
+`JUNGLE_DISABLE_ANTI_CHEAT=1` in `apps/server` turns the entire movement
+anti-cheat off — every report is accepted, no stops or kicks (dev/testing
+only; never in production).
+
 **Endgame (404 finish tile)**: tile gid 404 in `layer1` is an interaction tile
 (shared `INTERACTION_TILE_ACTIONS`: 404 → `"finish"`). Standing on it and
 pressing E stops the run: the room stamps the server finish moment on the
 synced `PlayerInfo.finishedAt`, the web client freezes its run timer at it
 and shows the completion time (input freezes too), and the room records the
 result to a SQLite store (`apps/server/src/game/run-results.ts`;
-`apps/server/data/jungle-runs.sqlite`, env `JUNGLE_RUN_RESULTS_PATH`, time =
-finish − joinedAt + 10s per counted death). See `docs/gameplay.md`.
+`data/jungle-runs.sqlite` in the repo-root `data/` dir, env
+`JUNGLE_RUN_RESULTS_PATH`, time = finish − joinedAt + 10s per counted
+death). See `docs/gameplay.md`.
 
 ## Boundaries
 

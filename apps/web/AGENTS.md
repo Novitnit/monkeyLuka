@@ -18,8 +18,9 @@ separate `apps/server` process now mounts inside Next via Elysia's official
 The leaderboard page (`src/app/leaderboard/page.tsx`) is a **dynamic Server
 Component** (`export const dynamic = "force-dynamic"` — always read at request
 time, never prerendered/cached) that lists completed jungle runs
-**shortest-to-longest**. The runs are written by the Colyseus room into
-`apps/server/data/jungle-runs.sqlite` (SQLite store + schema + the
+**shortest-to-longest**. The runs are written by the Colyseus room into the
+repo-root `data/jungle-runs.sqlite` (`/app/data` in Docker — the compose
+bind mount; SQLite store + schema + the
 `JUNGLE_RUN_RESULTS_PATH` env override live in
 `apps/server/src/game/run-results.ts` — unchanged, still authoritative); the
 page's read side is `src/lib/leaderboard.ts`, which opens that same file with
@@ -33,8 +34,10 @@ modules load via Node `require`) . The leaderboard reader therefore uses Node's
 built-in `node:sqlite` (the runtime is Node 26) to read the same file the
 server writes with bun:sqlite — SQLite is just SQLite across drivers. Both
 files agree on the path (`JUNGLE_RUN_RESULTS_PATH`, default
-`../server/data/jungle-runs.sqlite` relative to `apps/web` — the dev/build
-scripts `cd` there) and the row shape
+`../../data/jungle-runs.sqlite` relative to `apps/web` — the dev/build
+scripts `cd` there, so it lands on the repo-root `data/`; in the standalone
+container, `next`'s `server.js` chdirs to `/app/apps/web`, so the same
+relative path lands on the shared `/app/data` bind mount) and the row shape
 (`name`/`time_ms`/`finished_at`/`room_id`, `ORDER BY time_ms ASC, finished_at
 ASC`); change either in the server store and mirror it in the reader.
 `node:sqlite` types come from `src/types/node-sqlite.d.ts` (a hand-held shim —
@@ -518,6 +521,37 @@ Screen chrome shared with the placeholder screens (ambient glow backdrop,
   reaches the serving machine; override with `NEXT_PUBLIC_COLYSEUS_ENDPOINT`
   (see `.env.example`).
 - Deps: `phaser`, `@colyseus/sdk`, `elysia`, `@elysia/cors`, `@monkeyluka/shared`.
+
+## iOS & PWA (installable full-screen game)
+
+The game is mobile-first and landscape-only; on iPhone/iPad Safari there is
+**no `requestFullscreen()`**, so the only full-screen path is an installed
+Home Screen app. Three pieces make that work:
+
+- **`src/app/manifest.ts`** — the web app manifest (`display: "standalone"`,
+  `orientation: "landscape"` auto-locks installed PWAs to the landscape the
+  game is designed for, `start_url: "/play"`, dark theme colors, icons from
+  `public/icon-{192,512}.png`). Served at `/manifest.webmanifest`.
+- **`src/app/layout.tsx`** — `metadata.appleWebApp` (
+  `capable`/`title`/`statusBarStyle: "black-translucent"`) plus an
+  `metadata.other` entry for the legacy `apple-mobile-web-app-capable` name
+  (Next renders `capable` under the modern `mobile-web-app-capable`);
+  `black-translucent` + `viewportFit: "cover"` stretch the canvas under the
+  notch/home bar. The `src/app/apple-icon.png` convention (a 180×180 PNG
+  re-export of `icon.svg`, regenerated with `rsvg-convert` if the logo
+  changes) emits the `apple-touch-icon` link.
+- **`src/components/game-gate.tsx`** — detects iOS (UA, or the iPadOS 13+
+  MacIntel+touchscreen disguise) and, when fullscreen is unavailable and the
+  app isn't running standalone, shows Add-to-Home-Screen steps (Share → Add
+  to Home Screen → open from the icon) instead of a dead end. The gate's
+  `(display-mode: standalone)` check unlocks installed PWAs automatically;
+  the fetch is purely client-side (no SSR effect).
+
+`globals.css` carries the iOS touch rules: `touch-action: manipulation` (no
+double-tap zoom), `-webkit-touch-callout: none` (no long-press image/copy
+callout over the Phaser canvas), `-webkit-text-size-adjust: 100%` (no font
+inflation on the first paint before the player rotates). Game-first: iOS
+long-press text selection on the content pages is traded away.
 
 ## REST API (Elysia × Next.js)
 

@@ -21,8 +21,9 @@ COPY packages/shared/src packages/shared/src
 COPY Assets ./Assets
 
 # bun:sqlite cannot create a missing parent dir on open; dev creates this
-# locally and the compose named volume mounts over it at runtime.
-RUN mkdir -p apps/server/data
+# locally and the compose bind mount (./data:/app/data) provides it at
+# runtime.
+RUN mkdir -p data
 
 ENV NODE_ENV=production
 EXPOSE 3001
