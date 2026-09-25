@@ -46,6 +46,12 @@ import {
 } from "../door/door-render";
 import { createFinishOverlay } from "../finish/finish-overlay";
 import { createQuestBox } from "../quest/quest-box";
+import type { QuestionTabletController } from "../quest/question-tablet";
+import {
+  QUESTION_TABLET_TEXTURE,
+  createQuestionTabletViews,
+  registerQuestionTabletAnimations,
+} from "../quest/question-tablet";
 import { createRunTimer } from "../timer/run-timer";
 import {
   MOVE_PLATFORM_TEXTURE,
@@ -60,7 +66,15 @@ import {
   registerTrapSpikeRunAnimations,
 } from "../trap/trap-spike-run-render";
 import type { JungleGameOptions, JungleRoom } from "../jungle-game";
-import { DOOR_SPRITE, MAP_DIR, MAP_FILE, OUT_TILE_LAYER_NAME, PLAYER_DIR, TRAP_DIR } from "./constants";
+import {
+  DOOR_SPRITE,
+  MAP_DIR,
+  MAP_FILE,
+  OUT_TILE_LAYER_NAME,
+  PLAYER_DIR,
+  QUESTION_TABLET_SPRITE,
+  TRAP_DIR,
+} from "./constants";
 import {
   isCollisionDebugEnabled,
   isDebugEnabled,
@@ -106,6 +120,11 @@ export function createSceneCreate(
     // a 3×3 grid of 64×64 cells, frame 0 the idle/closed pose and frames
     // 0–8 the one-shot opening animation (see door-render.ts).
     this.load.image(DOOR_TEXTURE, DOOR_SPRITE);
+    // The question-tablet sheet (the `public/question-tablet.png` symlink
+    // into `Assets/QuestionTablet.png`): a 112×128 image of 16×32 frames,
+    // frame 0 the idle tablet and frames 1–22 the correct/wrong verdict
+    // animations (see question-tablet.ts).
+    this.load.image(QUESTION_TABLET_TEXTURE, QUESTION_TABLET_SPRITE);
     this.load.once(phaser.Loader.Events.COMPLETE, () => {
       void (async () => {
         try {
@@ -210,6 +229,11 @@ export function createSceneCreate(
           // door-open.ts). A door already open at world build (late join)
           // is created hidden instead.
           registerDoorAnimations(this);
+          // Question-tablet controller, set below on the DOOR layer (the
+          // tablets ride the same container the doors render in). Undefined
+          // when the map has no doors — then there is nothing to hang the
+          // tablets on and the quest box's verdict falls back to a no-op.
+          let questionTablets: QuestionTabletController | undefined;
           if (doors.length > 0) {
             const doorLayer = this.add.container(
               render.rooms[0].x,
@@ -223,10 +247,29 @@ export function createSceneCreate(
               doorLayer,
               room.state?.doors,
             );
+
+            // Question tablets (tile 315, the showquest signposts) share
+            // the door layer: like the doors, the map renderer skips their
+            // tileset art (see map-renderer.ts) and each signpost stands
+            // as a 16×32 sprite from the QuestionTablet sheet (see
+            // question-tablet.ts). Same layer = same display slot, so the
+            // tablets draw over the map art and under the player layer
+            // below, exactly like the doors — and share their fate when
+            // `out_tile` is lifted above the door layer below.
+            registerQuestionTabletAnimations(this);
+            questionTablets = createQuestionTabletViews(
+              this,
+              doorLayer,
+              interactions,
+            );
+            setDebugHandle("__jungleQuestionTablets", questionTablets);
+
             // Lift the map's front decoration layer (`out_tile`) above the
             // door layer: the doors' 1×2 stacks sit flush against the rim
             // art, so the panel must slide up BEHIND it, and the doorway
             // sill (a rim tile) must stay visible over the door's bottom.
+            // (The question tablets ride the same layer, so they draw
+            // behind the rim art too.)
             for (const top of render.topLayers) {
               this.children.bringToTop(top.container);
             }
@@ -402,8 +445,16 @@ export function createSceneCreate(
           // The quest question box (showquest interaction): screen-fixed
           // modal that listens for `quest:question` on the room and returns
           // the player's answer via `quest:answer`. Independent of the map,
-          // so it can be created once here.
-          const questBox = createQuestBox(this, room, state);
+          // so it can be created once here. On an interaction verdict it
+          // lowers its window and hands the result to the signpost's
+          // question tablet (created above on the door layer; a no-op when
+          // the map has no doors).
+          const questBox = createQuestBox(
+            this,
+            room,
+            state,
+            questionTablets,
+          );
           setDebugHandle("__jungleQuest", questBox);
 
           // The endgame completion modal (404 finish tile): screen-fixed

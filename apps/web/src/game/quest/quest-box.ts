@@ -1,20 +1,30 @@
 /**
  * The quest question box: a screen-fixed modal that appears when the server
  * sends `quest:question` and typesets the question + its shuffled choices
- * mathematically (see `math-format.ts`).
+ * mathematically (see `math-format.ts`). The verdict feedback is delegated
+ * to the in-world **question tablet** (question-tablet.ts): the tablet IS
+ * tile 315, the showquest signpost — frame 0 while a question is up and
+ * unanswered.
  *
  * Two question kinds ride the same message (`kind`):
  *
  * - **interaction** (showquest signpost): click a choice row (mouse
  *   pointer); the picked index goes back to the room (`quest:answer`),
  *   which grades it server-side (the correct index never reaches the
- *   client) and replies `quest:result` — the box then flashes
- *   "Correct!"/"Wrong" and auto-closes.
- * - **death** (dead-zone pit, see death.ts): a wrong answer holds "Wrong"
- *   on screen for 3 seconds (questOpen keeps the player frozen — the
- *   penalty), then the box closes and update.ts's self-heal re-requests a
- *   fresh death question; this repeats until a correct answer, which
- *   revives the player through the checkpoint flow (`revivePlayer`).
+ *   client) and replies `quest:result`. On the verdict the window lowers
+ *   **immediately** (`windowGroup`, the panel + question + rows, hides —
+ *   it had been covering the signpost, which is near the screen center)
+ *   and `playVerdict` runs on the ONE signpost that asked, named in the
+ *   message's `tx`/`ty` (see interactions.ts): correct plays frames 1–9
+ *   and holds on frame 9 (the solved signpost keeps its check), wrong
+ *   plays frames 10–22 and returns to frame 0. The box auto-closes.
+ * - **death** (dead-zone pit, see death.ts): no signpost is involved
+ *   (the message carries no tile), so the original feedback stays: a wrong
+ *   answer holds "Wrong" on screen for 3 seconds (questOpen keeps the
+ *   player frozen — the penalty), then the box closes and update.ts's
+ *   self-heal re-requests a fresh death question; this repeats until a
+ *   correct answer, which revives the player through the checkpoint flow
+ *   (`revivePlayer`).
  *
  * While the box is open the player's movement input is frozen
  * (`state.questOpen`; see update.ts), and the server drops any new showquest
@@ -41,6 +51,7 @@ import { revivePlayer } from "../death";
 import type { JungleRoom } from "../jungle-game";
 import type { JungleSceneState } from "../scene/state";
 import { renderMathString } from "./math-format";
+import type { QuestionTabletController } from "./question-tablet";
 
 /** Panel size in screen (canvas) pixels; the 1280×720 game scales as a unit. */
 const PANEL_WIDTH = 640;
@@ -59,6 +70,7 @@ export function createQuestBox(
   scene: Phaser.Scene,
   room: JungleRoom,
   state: JungleSceneState,
+  questionTablets?: QuestionTabletController,
 ): QuestBox {
   // Screen-fixed (never scrolls with the room-locked camera) and above
   // every room container; hidden until the first question arrives.
@@ -71,10 +83,20 @@ export function createQuestBox(
   const centerY = scene.scale.height / 2;
   const panelTop = centerY - PANEL_HEIGHT / 2;
 
+  // The answer window: the panel, title, question, and choice rows. Lives
+  // in its own nested container so "lowering the window" on an interaction
+  // verdict hides the whole group at once, clearing the screen for the
+  // signpost's tablet animation.
+  const windowGroup = scene.add.container(0, 0);
+  container.add(windowGroup);
+
   // One question + its answer state at a time.
   let opened = false;
   let answered = false;
   let kind: QuestQuestionKind = "interaction";
+  // The interaction tile (315 signpost) that asked the current question —
+  // its tablet plays the verdict. Null for death questions.
+  let tile: { tx: number; ty: number } | null = null;
   let answerTimer: Phaser.Time.TimerEvent | null = null;
   let closeTimer: Phaser.Time.TimerEvent | null = null;
   const rows: Phaser.GameObjects.Rectangle[] = [];
@@ -106,10 +128,16 @@ export function createQuestBox(
     });
   }
 
+  /** Hide the answer window but keep the (otherwise empty) container. */
+  function lowerWindow(): void {
+    windowGroup.setVisible(false);
+  }
+
   function close(): void {
     clearTimers();
     opened = false;
     answered = false;
+    tile = null;
     container.setVisible(false);
     state.questOpen = false;
   }
@@ -120,6 +148,22 @@ export function createQuestBox(
       answerTimer.remove();
       answerTimer = null;
     }
+
+    if (kind === "interaction") {
+      // The verdict is in: lower the window immediately — it had been
+      // covering the signpost — and let the question tablet on the signpost
+      // that asked play the result in the world (correct = frames 1–9,
+      // holding frame 9; wrong = frames 10–22, back to frame 0). The
+      // modal's only job was asking, so it closes right away. (Undefined
+      // when the map has no doors — tabletless signposts — so no-op.)
+      lowerWindow();
+      if (tile) questionTablets?.playVerdict(tile.tx, tile.ty, correct);
+      close();
+      return;
+    }
+
+    // Death questions: no signpost tablet (the message carried no tile),
+    // so the original feedback flash stays as the verdict.
     const feedback = scene.add
       .text(
         centerX,
@@ -135,26 +179,21 @@ export function createQuestBox(
       .setOrigin(0.5, 0.5);
     container.add(feedback);
 
-    if (kind === "death") {
-      if (correct) {
-        // Revive through the checkpoint flow (player:checkpoint → the room
-        // re-baselines at the spawn). The "Correct!" flash stays up and
-        // questOpen keeps movement frozen until it closes; the body is
-        // already teleported, so the player simply walks away from spawn
-        // when the box drops.
-        if (state.player) revivePlayer(state);
-        closeTimer = scene.time.delayedCall(1400, close);
-      } else {
-        // The 3-second penalty: "Wrong" stays on screen (and the modal
-        // freezes movement) for 3s, then the box closes so update.ts's
-        // self-heal re-requests a fresh death question and re-opens it.
-        // Repeat until the player answers correctly — see death.ts.
-        closeTimer = scene.time.delayedCall(3000, close);
-      }
-      return;
+    if (correct) {
+      // Revive through the checkpoint flow (player:checkpoint → the room
+      // re-baselines at the spawn). The "Correct!" flash stays up and
+      // questOpen keeps movement frozen until it closes; the body is
+      // already teleported, so the player simply walks away from spawn
+      // when the box drops.
+      if (state.player) revivePlayer(state);
+      closeTimer = scene.time.delayedCall(1400, close);
+    } else {
+      // The 3-second penalty: "Wrong" stays on screen (and the modal
+      // freezes movement) for 3s, then the box closes so update.ts's
+      // self-heal re-requests a fresh death question and re-opens it.
+      // Repeat until the player answers correctly — see death.ts.
+      closeTimer = scene.time.delayedCall(3000, close);
     }
-
-    closeTimer = scene.time.delayedCall(1400, close);
   }
 
   function open(question: string, choices: string[]): void {
@@ -162,7 +201,10 @@ export function createQuestBox(
     rows.length = 0;
     opened = true;
     answered = false;
-    container.removeAll(true);
+    // Rebuild the window from scratch (a fresh death question re-opens the
+    // box with new content; a lower window is raised again).
+    windowGroup.removeAll(true);
+    windowGroup.setVisible(true);
 
     // Panel + border.
     const panel = scene.add.rectangle(
@@ -174,7 +216,7 @@ export function createQuestBox(
       0.96,
     );
     panel.setStrokeStyle(2, 0x3b82f6, 1);
-    container.add(panel);
+    windowGroup.add(panel);
 
     const title = scene.add
       .text(centerX, panelTop + 30, "QUEST", {
@@ -184,7 +226,7 @@ export function createQuestBox(
         color: "#93c5fd",
       })
       .setOrigin(0.5, 0.5);
-    container.add(title);
+    windowGroup.add(title);
 
     // The question, typeset from its plain-text notation. A fractional
     // question (numerator over a rule) is ~2.5 lines tall, so the rows
@@ -193,7 +235,7 @@ export function createQuestBox(
       fontSize: 26,
       color: "#f8fafc",
     });
-    for (const object of questionMath.objects) container.add(object);
+    for (const object of questionMath.objects) windowGroup.add(object);
     questionMath.place(centerX - questionMath.width / 2, panelTop + 50);
 
     // The four answer choices, each row clickable + hover-highlighted.
@@ -208,7 +250,7 @@ export function createQuestBox(
         1,
       );
       row.setStrokeStyle(1, 0x334155, 1);
-      container.add(row);
+      windowGroup.add(row);
       rows.push(row);
 
       // The interactive row must carry scrollFactor 0 like its container:
@@ -227,7 +269,7 @@ export function createQuestBox(
         fontSize: 20,
         color: "#f8fafc",
       });
-      for (const object of choiceMath.objects) container.add(object);
+      for (const object of choiceMath.objects) windowGroup.add(object);
       choiceMath.place(
         centerX - choiceMath.width / 2,
         rowY + (ROW_HEIGHT - choiceMath.height) / 2,
@@ -254,9 +296,19 @@ export function createQuestBox(
       question?: unknown;
       choices?: unknown;
       kind?: unknown;
+      tx?: unknown;
+      ty?: unknown;
     };
     if (typeof m.question !== "string" || !Array.isArray(m.choices)) return;
     kind = m.kind === "death" ? "death" : "interaction";
+    // The interaction tile that asked rides along so the verdict plays on
+    // THIS signpost's tablet; death questions omit it.
+    tile =
+      kind === "interaction" &&
+      typeof m.tx === "number" &&
+      typeof m.ty === "number"
+        ? { tx: m.tx, ty: m.ty }
+        : null;
     open(m.question, m.choices.filter((c): c is string => typeof c === "string"));
   });
   room.onMessage(QUEST_RESULT_MESSAGE, (message: unknown) => {

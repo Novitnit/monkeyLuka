@@ -24,6 +24,13 @@ export const TRAP_DIR = "/trap";
 export const DOOR_SPRITE = "/door.png";
 
 /**
+ * The question-tablet sprite sheet (see question-tablet.ts): served as
+ * `public/question-tablet.png` (the symlink into `Assets/QuestionTablet.png`,
+ * same pattern as `public/door.png`).
+ */
+export const QUESTION_TABLET_SPRITE = "/question-tablet.png";
+
+/**
  * Front-most map decoration layer (`out_tile` in main.json): rendered as
  * its own whole-map container (see map-renderer's `topTileLayers`) and
  * raised above the door layer so door panels draw BEHIND the level's rim

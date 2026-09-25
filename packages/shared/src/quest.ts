@@ -41,6 +41,14 @@ export interface QuestQuestionMessage {
    * (showquest tiles) omit it — the client defaults to `"interaction"`.
    */
   kind?: QuestQuestionKind;
+  /**
+   * Grid cell of the interaction tile (the 315 showquest signpost) that
+   * asked the question — present only for interaction questions, and only
+   * so the client can play the verdict animation ON that signpost's
+   * question tablet. Death questions omit it.
+   */
+  tx?: number;
+  ty?: number;
 }
 
 /** Payload of `QUEST_ANSWER_MESSAGE`. */

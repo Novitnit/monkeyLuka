@@ -56,6 +56,17 @@ export function isInteractionTileGid(gid: number): boolean {
 }
 
 /**
+ * Whether a gid is the question-tablet tile (315 — the showquest
+ * signpost). The web map renderer skips this gid's tileset art: the tile
+ * renders from the QuestionTablet sprite sheet instead
+ * (apps/web/src/game/quest/question-tablet.ts), so the animated tablet is
+ * the signpost's only art.
+ */
+export function isQuestionTabletTileGid(gid: number): boolean {
+  return gid === TILE_INTERACTION;
+}
+
+/**
  * A compact grid of interaction tile gids (0 = no interaction). Same dims
  * and source layer as the collision grid, but interaction gids never appear
  * in `SolidGrid.kinds` — see the module doc.

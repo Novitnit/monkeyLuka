@@ -23,7 +23,7 @@
  */
 
 import type Phaser from "phaser";
-import { isDoorTileGid } from "@monkeyluka/shared";
+import { isDoorTileGid, isQuestionTabletTileGid } from "@monkeyluka/shared";
 import {
   ROOM_HEIGHT,
   ROOM_WIDTH,
@@ -229,6 +229,13 @@ function renderRoom(
         // opening animation leaves a genuinely open doorway.
         if (isDoorTileGid(gid)) continue;
 
+        // The question tablet (tile 315, the showquest signpost) renders
+        // from the QuestionTablet sheet (question-tablet.ts), not the
+        // tileset — the 16×32 sprite standing on the tile is the
+        // signpost's only art, so the static tileset tiles never peek
+        // through.
+        if (isQuestionTabletTileGid(gid)) continue;
+
         const frame = tileFrameForGid(map, gid);
         if (!frame) continue;
 
@@ -286,6 +293,7 @@ function renderTopTileLayer(
       const gid = layer.gids[tileY * layer.width + tileX];
       if (!gid) continue;
       if (isDoorTileGid(gid)) continue;
+      if (isQuestionTabletTileGid(gid)) continue;
 
       const frame = tileFrameForGid(map, gid);
       if (!frame) continue;

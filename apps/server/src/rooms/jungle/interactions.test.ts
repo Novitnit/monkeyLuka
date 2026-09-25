@@ -77,13 +77,22 @@ describe("showquest interaction handler", () => {
     expect(sent.length).toBe(1);
     const { type, payload } = sent[0]!;
     expect(type).toBe(QUEST_QUESTION_MESSAGE);
-    const message = payload as { question: string; choices: string[] };
+    const message = payload as {
+      question: string;
+      choices: string[];
+      tx?: unknown;
+      ty?: unknown;
+    };
 
     // A real question from the bank.
     expect(bank.questions.map((q) => q.question)).toContain(message.question);
     // All four choices, no duplicates, still the same set as the file.
     expect(message.choices.length).toBe(4);
     expect(new Set(message.choices).size).toBe(4);
+    // The asking signpost's grid cell rides along, so the client can
+    // animate that tile's question tablet with the verdict.
+    expect(message.tx).toBe(17);
+    expect(message.ty).toBe(11);
 
     // The server keeps the answer key; it never leaves through `send`.
     const reserved = pending();

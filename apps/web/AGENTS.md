@@ -402,8 +402,25 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   text. The player answers by clicking a row (mouse only — no on-screen
   numbers: the row order is the shuffle, and a number key would be an
   unlabeled guess); `quest:answer` `{choice}` is
-  graded server-side and `quest:result` `{correct}` flashes
-  Correct!/Wrong before the box auto-closes; a correct answer completes the
+  graded server-side and `quest:result` `{correct}` lowers the window
+  immediately (the panel had been covering the signpost) and hands the
+  verdict to the in-world **question tablet** — the 315 tile IS the
+  tablet: the map renderer skips the 315 tileset art
+  (`isQuestionTabletTileGid` in @monkeyluka/shared) and
+  `quest/question-tablet.ts` renders one 16×32 sprite per signpost from
+  the `Assets/QuestionTablet.png` sheet (served via the
+  `public/question-tablet.png` symlink, door/trap pattern: image loads in
+  create.ts, `registerQuestionTabletAnimations` adds the frames and the
+  two one-shot verdict animations, `createQuestionTabletViews` builds the
+  sprites on the SAME layer as the doors — the door layer, created
+  behind the lifted `out_tile` rim art and before the player layer), at
+  native 1:1 size — never scaled shorter — anchored so the legs rest on
+  the floor under the signpost. The asking signpost rides along in
+  `quest:question`'s `tx`/`ty` (interactions.ts), so `playVerdict` runs
+  on THAT signpost only: frame 0 idle while a question is
+  up and unanswered, correct plays frames 1–9 and holds on frame 9 (the
+  solved signpost keeps its check), wrong plays frames 10–22 then returns
+  to frame 0, then the box auto-closes; a correct answer completes the
   signpost tile (never asks again) and, once every signpost linked to a
   door is done, the room opens that door — the schema-synced
   `JungleState.doors` state makes the client clear the doorway's collision

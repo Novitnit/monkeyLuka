@@ -86,6 +86,11 @@ const INTERACTION_HANDLERS: Record<
     ctx.send(QUEST_QUESTION_MESSAGE, {
       question: question.question,
       choices,
+      // The asking signpost's grid cell: the client plays the verdict
+      // animation on THAT tile-315 question tablet (quest-box.ts →
+      // question-tablet.ts), not on every signpost.
+      tx: ctx.tile.tx,
+      ty: ctx.tile.ty,
     });
   },
   // The endgame tile (gid 404): ending the run. The press was already

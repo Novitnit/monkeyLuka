@@ -60,8 +60,10 @@ random question with `kind: "death"` on the same `quest:question` channel,
 unlike a showquest press it never touches the completion gate — grading
 stays server-side with the key in the player's pending slot). The quest box
 then runs the retry loop: a **wrong** answer holds "Wrong" on screen for 3
-seconds (movement stays frozen — the modal is still up) before the box
-closes and the update loop's self-heal re-requests a fresh death question
+seconds (movement stays frozen — the modal is still up; death questions
+carry no tile, so no question tablet animates) before the box closes and
+the update loop's self-heal re-requests a fresh
+death question
 (throttled to 1/s), **repeating until a correct answer**, which sends
 `quest:result {correct:true}` and revives through the exact
 `PLAYER_CHECKPOINT_MESSAGE` flow the debug R key uses (teleport locally,
@@ -317,15 +319,31 @@ shuffles its choices with a Fisher–Yates that tracks the correct index
 presses are dropped until the answer is graded, and `onReconnect` clears a
 stale slot, so a reloaded player's signpost still works). The pending slot
 also records the interaction tile the question came from. The client only
-ever receives `quest:question` `{question, choices}` — the raw plain-text
-strings, never the answer key — shows them in a screen-fixed modal box
+ever receives `quest:question` `{question, choices, tx, ty}` — the raw
+plain-text strings, never the answer key — shows them in a screen-fixed
+modal box
 (`apps/web/src/game/quest/quest-box.ts`, click a row — mouse only, the
 row order is the shuffle) and
 reports `quest:answer` `{choice}`; the room sanitizes + bounds the index by
 the sent `choiceCount`, grades it against the secret `correctIndex`, and
-replies `quest:result` `{correct}` (Correct!/Wrong, then the box closes;
-it also closes itself 3s after an unanswered answer so a blip can't wedge
-the player). A **correct** answer completes the interaction tile that asked
+replies `quest:result` `{correct}`. On the verdict the box **lowers its
+window immediately** (the panel had been covering the signpost) and the
+in-world **question tablet** plays the answer — tile 315 in `layer1` IS
+the tablet: the map renderer skips the 315 tileset art
+(`isQuestionTabletTileGid`), and `apps/web/src/game/quest/question-tablet.ts`
+(from the `Assets/QuestionTablet.png` sheet served via the
+`public/question-tablet.png` symlink) renders one 16×32 sprite per
+signpost from a 7×4 grid of 16×32 frames, at native 1:1 size (never
+scaled shorter) on the SAME world layer as the doors (the doorLayer
+container — under the lifted `out_tile` rim art and under the player
+layer); the `tx`/`ty` from `quest:question` pick the ONE signpost that
+asked, so `playVerdict` animates only that tablet — frame 0 is the idle
+tablet shown while the
+question is up and unanswered, a correct answer plays frames 1–9 and holds
+on frame 9 (the check stays), a wrong answer plays frames 10–22 and returns
+to frame 0 — then the box closes (it also closes itself 3s after an
+unanswered answer so a blip can't wedge the player). A **correct** answer
+completes the interaction tile that asked
 it (`QuestGate.markCompleted`): that signpost can NEVER be asked again (a
 repeat press — or a forged one — is a silent no-op), and once every
 showquest interaction linked to a door is completed, the room opens that
