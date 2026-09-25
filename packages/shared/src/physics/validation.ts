@@ -15,6 +15,18 @@ import type { SolidGrid } from "./tiles";
 export const PLAYER_INPUT_MESSAGE = "player:input";
 
 /**
+ * Cadence at which the browser client sends `PLAYER_INPUT_MESSAGE` reports,
+ * ms (the update loop's INPUT_INTERVAL_MS; see apps/web scene/constants.ts).
+ * The room floors the speed-check `dt` by this interval: a high-latency,
+ * jittery transport (Cloudflare tunnel, WAN) can deliver several of a
+ * client's 50 ms-spaced reports back-to-back, collapsing the measured
+ * wall-clock gap while the reported positions are a full cadence apart —
+ * without this floor that reads as impossible movement and freezes honest
+ * players.
+ */
+export const INPUT_INTERVAL_MS = 50;
+
+/**
  * Colyseus message name: client → server interaction trigger (the E key on
  * an interaction tile — see interaction.ts). The room resolves the action
  * from the sent gid **after re-probing the player's last accepted position**

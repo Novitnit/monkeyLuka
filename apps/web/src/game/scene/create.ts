@@ -385,11 +385,13 @@ export function createSceneCreate(
 
           // Resumed session: start from where the server last accepted this
           // player instead of the default spawn, so the first report is not
-          // a teleport and the sprite doesn't pop. If the state hasn't
-          // arrived yet, the update loop's snapshot sync snaps it in.
+          // a teleport and the sprite doesn't pop. Adopt unconditionally —
+          // the in-game snapshot path (applyServerSnapshot) deliberately
+          // skips snapping while the server is still moving the player, but
+          // boot must place the simulation exactly at the server's spot.
           const resumed = room.state?.players.get(room.sessionId);
           if (resumed) {
-            player.applyServerSnapshot({
+            player.adoptServerState({
               x: resumed.x,
               y: resumed.y,
               vx: resumed.vx,

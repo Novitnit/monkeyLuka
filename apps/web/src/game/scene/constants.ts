@@ -39,4 +39,4 @@ export const QUESTION_TABLET_SPRITE = "/question-tablet.png";
 export const OUT_TILE_LAYER_NAME = "out_tile";
 
 /** How often the client reports its state to the server, ms (~20 Hz). */
-export const INPUT_INTERVAL_MS = 50;
+export { INPUT_INTERVAL_MS } from "@monkeyluka/shared";

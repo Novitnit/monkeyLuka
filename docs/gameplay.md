@@ -266,12 +266,21 @@ Colyseus
 room does **no simulation** — it only
 validates the client's movement reports (malformed / flood / teleport /
 abnormal speed / buried-in-geometry via `validatePositionReport`) and
-broadcasts the last accepted report. A failing report **stops the player**
-(the broadcast freezes at the last accepted position, velocity zeroed) while
-violations count toward a kick. `PlayerInfo` position/velocity fields come
-from accepted client reports only (velocity clamped to the physics max) — a
-raw client-supplied position is never trusted, and after a stop the player
-only moves again once a report passes validation. Wall cling (a grab):
+broadcasts the last accepted report. The speed check's `dt` is floored by
+the client's report cadence (`INPUT_INTERVAL_MS` in `@monkeyluka/shared`),
+so burst-delivering transports (the Cloudflare tunnel) can't make an honest
+20 Hz stream read as impossible movement, and **two consecutive** failing
+reports are required before the room **stops the player** (the broadcast
+freezes at the last accepted position, velocity zeroed) while a single
+isolated failure is absorbed; violations count toward a kick. `PlayerInfo`
+position/velocity fields come from accepted client reports only (velocity
+clamped to the physics max) — a raw client-supplied position is never
+trusted, and after a stop the player only moves again once a report passes
+validation. The web client mirrors the tolerance: it hard-snaps to the
+broadcast only when the server has stopped the player or the offset exceeds
+`HARD_SNAP_LIMIT` (240 px), else it eases — high-RTT play never
+rubber-bands. See
+`discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`. Wall cling (a grab):
 airborne next to a wall, moving into it, pressing jump grabs the wall and
 hangs the player (no gravity, no lateral drift) until jump again launches
 them up+away (wall jump), the wall face ends below them, or they land —

@@ -184,10 +184,18 @@ defineServer({
   - **Anti-cheat**: input payloads are shape-checked, rate-limited
     (`ANTI_CHEAT.maxInputRatePerSecond`), seq-checked, and the reported
     trajectory is validated by `validatePositionReport()` against the last
-    accepted report (teleport / abnormal speed / buried-in-geometry); a
-    failing report stops the player at the last accepted position and
-    violations count toward a kick at `ANTI_CHEAT.maxViolations`. No
+    accepted report (teleport / abnormal speed / buried-in-geometry). The
+    speed check's `dt` is floored by the client's report cadence
+    (`INPUT_INTERVAL_MS`), so jittery, burst-delivering transports (the
+    Cloudflare tunnel) can't make an honest 20 Hz stream read as
+    impossible movement; and only **two consecutive** failing reports stop
+    the player (a single isolated failure is absorbed) while violations
+    count toward a kick at `ANTI_CHEAT.maxViolations`. No
     unvalidated client-supplied position is ever written to the schema.
+    The client likewise only adopts the broadcast outright when the server
+    has stopped it or the offset is huge (`HARD_SNAP_LIMIT`), else it
+    eases — so high-RTT play never rubber-bands. See
+    `discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`.
   - **Single-run rooms**: `maxClients = 1`; the web client only ever
     `create`s, and the room is destroyed when its run ends or its player
     leaves — Colyseus `autoDispose` covers the last-client leave, and
@@ -299,9 +307,12 @@ Player (browser)
   │  7. ~20 Hz:                        → PLAYER_INPUT_MESSAGE (seq, predicted pos/vel/state)
   │     server per report:            → sanitize + flood/seq → validatePositionReport()
   │                                    → clean: broadcast as PlayerInfo fields
-  │                                    → failing: stop (freeze + zero v) + count violation
+  │                                    → failing: absorb 1st, stop (freeze + zero v) + count on 2nd
+  │                                    → dt floored by report cadence (burst-proof)
   └── state patch broadcast            → all members' room.state updates
-  │  8. local player reconciles against broadcast x/y; remote players ease to it
+  │  8. local player renders its prediction directly (zero input→pixel delay);
+  │     the broadcast is adopted only when the server stopped the player or
+  │     the offset is huge; remote players ease to it
   ▼
 Phaser jungle scene (walk/jump via shared physics)
 ```

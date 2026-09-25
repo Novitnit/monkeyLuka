@@ -3,6 +3,7 @@ import {
   ANTI_CHEAT,
   DEFAULT_PLAYER_PHYSICS,
   DoorInfo,
+  INPUT_INTERVAL_MS,
   JungleState,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_CHECKPOINT_MESSAGE,
@@ -41,6 +42,14 @@ import { runInteraction } from "./interactions";
 import { QuestGate } from "./quest-gate";
 import { writeIfChanged } from "./schema-write";
 import type { ServerPlayer } from "./server-player";
+
+/**
+ * Consecutive failing movement reports before the player is stopped and a
+ * violation is counted. One failing report is absorbed silently (a burst-
+ * delivered honest report through a jittery tunnel can read as a teleport or
+ * speed); the stop/count fires only for sustained abnormal movement.
+ */
+const FAILING_REPORTS_TO_STOP = 2;
 
 const debug = true
 
@@ -165,6 +174,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       },
       lastValidAt: 0,
       violations: 0,
+      failStreak: 0,
       deaths: 0,
       finished: false,
       pendingQuest: null,
@@ -231,6 +241,7 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       player.lastSeq = -1;
       player.inputStamps = [];
       player.lastValidAt = 0;
+      player.failStreak = 0;
       // A reconnected page or socket has no live quest box: drop any pending
       // question so a future showquest can send a fresh one (the client also
       // closes a box that never gets its result, so a blip mid-answer still
@@ -529,9 +540,17 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
     // Trajectory validation against the last accepted report: the reported
     // spot must be out of solid geometry, near the last accepted position,
     // and reachable within the physical speed ceiling given the wall-clock
-    // gap between accepted reports.
-    const dt =
+    // gap between accepted reports. The gap is floored by the client's own
+    // report cadence (see below): the browser sends every INPUT_INTERVAL_MS
+    // and seq must rise by exactly one per report, so a jittery tunnel that
+    // delivers a 50 ms-spaced stream back-to-back can never under-count the
+    // time a legitimately-spaced trajectory took.
+    const wallDt =
       player.lastValidAt > 0 ? (now - player.lastValidAt) / 1000 : null;
+    const cadenceDt =
+      (payload.seq - player.lastSeq) * (INPUT_INTERVAL_MS / 1000);
+    const dt =
+      player.lastValidAt > 0 ? Math.max(wallDt ?? 0, cadenceDt) : null;
     const violations = validatePositionReport(
       this.map.grid,
       { px: payload.px, py: payload.py },
@@ -546,8 +565,15 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
           `[jungle:debug] seq=${payload.seq} reported=(${payload.px.toFixed(1)},${payload.py.toFixed(1)}) accepted=(${player.lastValid.x.toFixed(1)},${player.lastValid.y.toFixed(1)}) dt=${dt?.toFixed(3)} flags=${violations.join("+")} violations=${player.violations + 1}`,
         );
       }
-      // Stop the player: x/y in the schema already hold the last accepted
-      // position, so zeroing the velocity is what freezes the broadcast.
+      // Absorb a single isolated failing report: a jittery transport can
+      // make ONE honest report read as teleport/speed (a long delivery
+      // stall mid-fall, a burst that the cadence floor can't fully span).
+      // Only `FAILING_REPORTS_TO_STOP` consecutive failures mean sustained
+      // abnormal movement — then stop the player (x/y in the schema still
+      // hold the last accepted position, so zeroing the velocity is what
+      // freezes the broadcast) and count a violation as before.
+      player.failStreak += 1;
+      if (player.failStreak < FAILING_REPORTS_TO_STOP) return;
       const info = this.state.players.get(client.sessionId);
       if (info) {
         writeIfChanged(info, "vx", 0);
@@ -556,6 +582,8 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
       this.registerViolation(client, player, violations.join("+"));
       return;
     }
+
+    player.failStreak = 0;
 
     player.lastValid = {
       x: payload.px,

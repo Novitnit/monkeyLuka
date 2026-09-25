@@ -94,6 +94,14 @@ only validates each report and relays it:
    WebSocket is ordered, so that means forgery/retransmit), then runs
    `validatePositionReport()` against the **last accepted report** — teleport
    (too far from it, or buried in solid geometry) and abnormal-speed checks.
+   The speed check's `dt` is **floored by the client's own report cadence**
+   (`(seq - lastSeq) × INPUT_INTERVAL_MS`, the shared constant exported by
+   `validation.ts`): a jittery, burst-delivering transport (Cloudflare
+   tunnel, WAN) can land several of the client's 50 ms-spaced reports
+   back-to-back, and the *arrival* wall-clock gap then collapses while the
+   reported positions are a full cadence apart — without the floor that
+   reads as impossible movement and freezes honest players. See
+   `discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`.
 3. A clean report becomes the new broadcast state: its `x/y/vx/vy/grounded/
    clinging/facing` are written to `PlayerInfo` (only changed fields, to cut
    patch churn; velocity is clamped to the physics ceiling since it is
@@ -107,12 +115,15 @@ only validates each report and relays it:
    pixel-mask overlap — the probe needs `oy1 >= DEAD_ZONE_BASE_ROW - 1`)
    is why the return triggers at all: see
    `discoveries/dead-zone-touch-log-never-fired-flush-pose.md`.
-   A failing report **stops the player** — the broadcast keeps the last
-   accepted position with velocity zeroed — and increments the violation
-   counter; the client is kicked at `ANTI_CHEAT.maxViolations`. After a stop
-   the player only moves again once a report passes validation: a one-off
-   glitch resumes in ~one report interval, sustained abnormal movement stays
-   frozen and escalates to a kick.
+   Two **consecutive** failing reports **stop the player** — the broadcast
+   keeps the last accepted position with velocity zeroed — and increment the
+   violation counter; a single isolated failure is absorbed silently (a burst
+   or delivery stall can make one honest report read as teleport/speed). The
+   client is kicked at `ANTI_CHEAT.maxViolations`. After a stop the player
+   only moves again once a report passes validation: a one-off glitch resumes
+   in ~one report interval, sustained abnormal movement stays frozen and
+   escalates to a kick. (`failStreak` on `ServerPlayer` tracks consecutive
+   failures; threshold is `FAILING_REPORTS_TO_STOP` in `jungle-room.ts`.)
 
 `PlayerInfo` is written only from accepted reports; no raw client position ever
 reaches the schema unvalidated. What the server checks is **plausibility**, not

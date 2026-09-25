@@ -86,6 +86,13 @@ Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bu
   `apps/web/Dockerfile` (Next standalone, Node runtime), built from the repo
   root context (see `.dockerignore`). `docker compose up -d --build` after
   source changes.
+- **Shared-constant changes bake into BOTH images independently** (the
+  server runs the raw `packages/shared` source; the web bundler inlines it).
+  Changing e.g. `PLAYER_SPAWN` or anti-cheat tuning in `packages/shared` and
+  rebuilding only one app leaves a server that spawns/validates at one spot
+  and a client that spawns at another — every fresh run is teleport-flagged
+  and kicked. Always `docker compose build server next` together. See
+  `discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`.
 - **`NEXT_PUBLIC_COLYSEUS_ENDPOINT` is a build ARG** (inlined into the
   browser bundle): `wss://server.monkeyluka.online` lives in the gitignored
   root `.env` (see `.env.example`) — rebuild `next` after changing it.
@@ -133,6 +140,14 @@ The full current-state deep-dive is **`docs/gameplay.md`**; per-workspace
 detail: `apps/web/AGENTS.md` (rendering/debug), `apps/server/AGENTS.md`
 (validation, quest gate, run-results SQLite), `packages/shared/AGENTS.md`
 (physics models). Per-bug root causes: `discoveries/`.
+
+The validation+reconcile rules are **transport-jitter tolerant**: the
+server floors the speed check by the client's report cadence and requires
+two consecutive failing reports before stopping a player, and the client
+only hard-snaps to the broadcast when the server stopped it or the offset
+is huge — so burst-delivering high-RTT paths (the Docker/Cloudflare
+tunnel) don't freeze or rubber-band honest players. See
+`discoveries/docker-tunnel-burst-reads-as-speed-hack-freezes-players.md`.
 
 **Endgame (404 finish tile)**: tile gid 404 in `layer1` is an interaction tile
 (shared `INTERACTION_TILE_ACTIONS`: 404 → `"finish"`). Standing on it and

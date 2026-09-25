@@ -39,10 +39,16 @@ const MAX_STEP_DT = 1 / 20;
 
 /** Error beyond which the local prediction is discarded for the server's. */
 export const SNAP_DISTANCE = 32;
-/** How quickly the render correction closes a sub-snap error (per second). */
-const CORRECTION_RATE = 8;
-/** Cap on the render correction, px — keeps corrections imperceptible. */
-const MAX_CORRECTION = 20;
+/**
+ * Server-broadcast offset beyond which the broadcast is adopted outright no
+ * matter its velocity. Below this, while the server is still ACCEPTING the
+ * local trajectory (its broadcast velocities are non-zero), the offset is
+ * just the transport's ~one-RTT lead — the sprite ignores it and renders
+ * the local prediction directly, so honest high-latency play (Cloudflare
+ * tunnel, WAN) never trails or rubber-bands. (The in-game teleport flows —
+ * checkpoint, revive — place the sim directly and never reach this path.)
+ */
+const HARD_SNAP_LIMIT = 240;
 
 /** Authoritative state as broadcast in `PlayerInfo`. */
 export interface PlayerSnapshot {
@@ -66,6 +72,12 @@ export interface Player {
   update(dt: number): PlayerStepResult;
   /** Reconciles against the server's broadcast snapshot. */
   applyServerSnapshot(snapshot: PlayerSnapshot): void;
+  /**
+   * Boot-time adoption of a server snapshot (resumed session): places the
+   * simulation at the server's last accepted state unconditionally, so the
+   * first report reads as a re-baseline instead of a teleport.
+   */
+  adoptServerState(snapshot: PlayerSnapshot): void;
   /** Debug: instantly places the simulation at (x, y) with zero velocity. */
   teleportTo(x: number, y: number): void;
   /** Writes the (corrected) predicted position to the sprite. */
@@ -87,10 +99,6 @@ export function createPlayer(
 ): Player {
   const physics = createPlayerState(DEFAULT_PLAYER_PHYSICS);
   let input: PlayerInput = { left: false, right: false, jump: false };
-  // Offset from predicted to rendered position: chases the server's position
-  // when the two disagree, then settles back to zero as prediction agrees.
-  const correction = { x: 0, y: 0 };
-  const target = { x: 0, y: 0 };
 
   const sprite = scene.add.sprite(physics.x, physics.y, PLAYER_TEXTURE);
   sprite.setDepth(10);
@@ -121,23 +129,34 @@ export function createPlayer(
     applyServerSnapshot(snapshot: PlayerSnapshot): void {
       const ex = snapshot.x - physics.x;
       const ey = snapshot.y - physics.y;
-      if (Math.hypot(ex, ey) > SNAP_DISTANCE) {
-        // Too far to reconcile smoothly (server correction, teleport, or a
-        // long stall) — trust the server outright.
+      const dist = Math.hypot(ex, ey);
+      // The broadcast is authoritative when the server STOPPED us (violation
+      // halt, checkpoint re-baseline) or the discrepancy is so large it can't
+      // be a latency artifact (teleport-scale correction / long stall) —
+      // adopt it outright so the monkey visibly freezes where the server put
+      // it. Otherwise the offset is just ~one RTT of honest movement the
+      // server hasn't caught up to yet: the local simulation IS the player
+      // (it's client-simulated), so there is nothing to reconcile — the
+      // sprite renders the prediction directly and never trails.
+      const stopped =
+        Math.abs(snapshot.vx) < 1e-6 && Math.abs(snapshot.vy) < 1e-6;
+      if (dist > HARD_SNAP_LIMIT || (stopped && dist > SNAP_DISTANCE)) {
         physics.x = snapshot.x;
         physics.y = snapshot.y;
         physics.vx = snapshot.vx;
         physics.vy = snapshot.vy;
         physics.grounded = snapshot.grounded;
         physics.clinging = snapshot.clinging;
-        correction.x = 0;
-        correction.y = 0;
-        target.x = 0;
-        target.y = 0;
-        return;
       }
-      target.x = ex;
-      target.y = ey;
+    },
+
+    adoptServerState(snapshot: PlayerSnapshot): void {
+      physics.x = snapshot.x;
+      physics.y = snapshot.y;
+      physics.vx = snapshot.vx;
+      physics.vy = snapshot.vy;
+      physics.grounded = snapshot.grounded;
+      physics.clinging = snapshot.clinging;
     },
 
     teleportTo(x: number, y: number): void {
@@ -145,20 +164,17 @@ export function createPlayer(
       physics.y = y;
       physics.vx = 0;
       physics.vy = 0;
-      correction.x = 0;
-      correction.y = 0;
-      target.x = 0;
-      target.y = 0;
     },
 
-    render(dt: number): void {
-      const rate = Math.min(1, CORRECTION_RATE * dt);
-      correction.x += (target.x - correction.x) * rate;
-      correction.y += (target.y - correction.y) * rate;
-      const clamp = (value: number): number =>
-        Math.max(-MAX_CORRECTION, Math.min(MAX_CORRECTION, value));
-      sprite.x = physics.x + clamp(correction.x);
-      sprite.y = physics.y + clamp(correction.y);
+    render(_dt: number): void {
+      // The local prediction IS the rendered position: movement is
+      // client-simulated, so the sprite shows exactly what the player asked
+      // for — zero input→pixel latency (no chasing the ~one-RTT-stale
+      // broadcast), and the trap/pit kill probes align with what the player
+      // actually sees. Only server stops/teleports move `physics`, and the
+      // sprite follows them the frame the snapshot is applied.
+      sprite.x = physics.x;
+      sprite.y = physics.y;
       sprite.setFlipX(physics.facing < 0);
       // Frame the idle/cling/jog/jump animation from the simulated state.
       setPlayerAnimation(sprite, physics.grounded, physics.vx, physics.clinging);

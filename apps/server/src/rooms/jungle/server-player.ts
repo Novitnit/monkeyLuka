@@ -54,6 +54,14 @@ export interface ServerPlayer {
   /** Count of teleport/speed/flood violations before the kick threshold. */
   violations: number;
   /**
+   * Consecutive failing trajectory reports. A single isolated failure is
+   * absorbed (burst-delivered reports through a jittery tunnel read as
+   * impossible movement even when honest); only sustained abnormal movement
+   * — this counter at the room's stop threshold — freezes the player and
+   * counts toward `violations`. Reset by any passing report.
+   */
+  failStreak: number;
+  /**
    * Deaths the room has counted (one per death question it sent). Feeds
    * the server-computed completion time: each death adds the same 10s
    * penalty the client's HUD applies, so the saved result matches the

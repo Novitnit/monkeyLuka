@@ -352,8 +352,13 @@ Screen chrome shared with the placeholder screens (ambient glow backdrop,
   every frame, and renders that prediction directly — no server round-trip
   before movement appears. It streams `PLAYER_INPUT_MESSAGE` at ~20 Hz (the
   predicted `px/py/vx/vy/grounded/clinging/facing`), and reconciles
-  against the broadcast `PlayerInfo` snapshot (snap beyond 32 px, else a
-  clamped lean-in) so a report the server rejected visibly stops the monkey;
+  against the broadcast `PlayerInfo` snapshot only when it is authoritative:
+  the local sprite renders the prediction directly (zero input→pixel
+  latency), the snapshot is adopted only when the server has stopped the
+  player (zeroed velocities) or the offset is beyond `HARD_SNAP_LIMIT`
+  = 240 px — the in-flight offset is ~one RTT of honest lag, not an error,
+  and chasing it would make the sprite trail every press. A rejected report
+  visibly stops the monkey without rubber-banding;
   other players render directly from server positions (eased). The sprite is
   flipped to `facing`; both local and remote sprites live in the scene-level
   player layer (above every room's art) so coordinates are room-local and

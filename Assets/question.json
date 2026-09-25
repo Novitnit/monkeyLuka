@@ -1,8 +1,8 @@
 {
-    "total_questions": "1",
+    "total_questions": 100,
     "questions": [
         {
-            "question": "d((x^5))/dx",
+            "question": "Find f'(x) if f(x) = x^5",
             "choices": {
                 "1": "5x^4",
                 "2": "4x^5",
@@ -10,6 +10,996 @@
                 "4": "x^4"
             },
             "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^7",
+            "choices": {
+                "1": "6x^7",
+                "2": "7x^6",
+                "3": "7x^7",
+                "4": "x^6"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^2",
+            "choices": {
+                "1": "x",
+                "2": "2",
+                "3": "2x",
+                "4": "2x^2"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x",
+            "choices": {
+                "1": "0",
+                "2": "x",
+                "3": "1/x",
+                "4": "1"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 10",
+            "choices": {
+                "1": "0",
+                "2": "1",
+                "3": "10",
+                "4": "10x"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^3 + 5",
+            "choices": {
+                "1": "3x^2 + 5",
+                "2": "3x^2",
+                "3": "x^2",
+                "4": "3x^3"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 4x^5",
+            "choices": {
+                "1": "20x^5",
+                "2": "9x^4",
+                "3": "20x^4",
+                "4": "4x^4"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (1/2)x^4",
+            "choices": {
+                "1": "(1/2)x^3",
+                "2": "4x^3",
+                "3": "2x^4",
+                "4": "2x^3"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 3x^2 - 7x",
+            "choices": {
+                "1": "6x - 7",
+                "2": "6x - 7x",
+                "3": "3x - 7",
+                "4": "6x^2 - 7"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^4 - x^2",
+            "choices": {
+                "1": "4x^3 - x",
+                "2": "4x^3 - 2x",
+                "3": "4x^4 - 2x^2",
+                "4": "3x^3 - 2x"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 2x^3 + 3x",
+            "choices": {
+                "1": "6x^2 + 3x",
+                "2": "5x^2 + 3",
+                "3": "6x^2 + 3",
+                "4": "6x^3 + 3"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 5x^4 - 2x^3",
+            "choices": {
+                "1": "20x^4 - 6x^3",
+                "2": "20x^3 - 6x",
+                "3": "5x^3 - 2x^2",
+                "4": "20x^3 - 6x^2"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 7x^2 + 4",
+            "choices": {
+                "1": "14x",
+                "2": "14x + 4",
+                "3": "7x",
+                "4": "14x^2"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 8x - 3",
+            "choices": {
+                "1": "8x",
+                "2": "8",
+                "3": "8 - 3x",
+                "4": "5"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = -x^5",
+            "choices": {
+                "1": "5x^4",
+                "2": "-x^4",
+                "3": "-5x^4",
+                "4": "-5x^5"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = -3x^3 + 2x",
+            "choices": {
+                "1": "-9x^2 + 2x",
+                "2": "-6x^2 + 2",
+                "3": "-9x^3 + 2",
+                "4": "-9x^2 + 2"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^6 + 2x^3 + 1",
+            "choices": {
+                "1": "6x^5 + 6x^2",
+                "2": "6x^5 + 6x^2 + 1",
+                "3": "6x^6 + 6x^3",
+                "4": "5x^5 + 6x^2"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 4x^3 - 5x^2 + 7x",
+            "choices": {
+                "1": "12x^2 - 10x",
+                "2": "12x^2 - 10x + 7",
+                "3": "12x^3 - 10x^2 + 7",
+                "4": "7x^2 - 10x + 7"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x",
+            "choices": {
+                "1": "1/x^2",
+                "2": "-1/x",
+                "3": "-1/x^2",
+                "4": "1"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x^3",
+            "choices": {
+                "1": "-3/x^2",
+                "2": "3/x^4",
+                "3": "-1/x^4",
+                "4": "-3/x^4"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x^2",
+            "choices": {
+                "1": "-2/x^3",
+                "2": "-2/x",
+                "3": "2/x^3",
+                "4": "-1/x^3"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x^5",
+            "choices": {
+                "1": "-5/x^4",
+                "2": "-5/x^6",
+                "3": "5/x^6",
+                "4": "-1/x^6"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = sqrt(x)",
+            "choices": {
+                "1": "1/sqrt(x)",
+                "2": "2sqrt(x)",
+                "3": "1/(2sqrt(x))",
+                "4": "-1/(2sqrt(x))"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = cube_root(x)",
+            "choices": {
+                "1": "1/(3x^(1/3))",
+                "2": "3x^(2/3)",
+                "3": "-1/(3x^(2/3))",
+                "4": "1/(3x^(2/3))"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = sqrt(x)",
+            "choices": {
+                "1": "1/(2sqrt(x))",
+                "2": "1/x",
+                "3": "sqrt(x)/2",
+                "4": "2/sqrt(x)"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^(3/2)",
+            "choices": {
+                "1": "(2/3)sqrt(x)",
+                "2": "3sqrt(x)/2",
+                "3": "(3/2)x^(3/2)",
+                "4": "3/(2sqrt(x))"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^(5/2)",
+            "choices": {
+                "1": "(5/2)x^(5/2)",
+                "2": "(2/5)x^(3/2)",
+                "3": "5x^(3/2)/2",
+                "4": "(5/2)sqrt(x)"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/sqrt(x)",
+            "choices": {
+                "1": "1/(2x^(3/2))",
+                "2": "-1/(2sqrt(x))",
+                "3": "-1/x^(3/2)",
+                "4": "-1/(2x^(3/2))"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 3sqrt(x)",
+            "choices": {
+                "1": "3/(2sqrt(x))",
+                "2": "3/sqrt(x)",
+                "3": "6sqrt(x)",
+                "4": "3/(2x)"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 2x^(3/2)",
+            "choices": {
+                "1": "3x^(3/2)",
+                "2": "3sqrt(x)",
+                "3": "(4/3)sqrt(x)",
+                "4": "2sqrt(x)"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 4/x^2",
+            "choices": {
+                "1": "-8/x",
+                "2": "8/x^3",
+                "3": "-8/x^3",
+                "4": "-4/x^3"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 5/sqrt(x)",
+            "choices": {
+                "1": "5/(2x^(3/2))",
+                "2": "-5/(2sqrt(x))",
+                "3": "-10/x^(3/2)",
+                "4": "-5/(2x^(3/2))"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^(7/3)",
+            "choices": {
+                "1": "7x^(4/3)/3",
+                "2": "(3/7)x^(4/3)",
+                "3": "(7/3)x^(7/3)",
+                "4": "7x^(1/3)/3"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x^(4/3)",
+            "choices": {
+                "1": "4/(3x^(7/3))",
+                "2": "-4/(3x^(7/3))",
+                "3": "-4/(3x^(1/3))",
+                "4": "-1/(x^(7/3))"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/x^5 + sqrt(x)",
+            "choices": {
+                "1": "-5/x^4 + 1/(2sqrt(x))",
+                "2": "5/x^6 + 1/(2sqrt(x))",
+                "3": "-5/x^6 + 1/(2sqrt(x))",
+                "4": "-5/x^6 + 1/sqrt(x)"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f(x) = x^2, find f'(2)",
+            "choices": {
+                "1": "2",
+                "2": "8",
+                "3": "16",
+                "4": "4"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f(x) = x^3, find f'(2)",
+            "choices": {
+                "1": "12",
+                "2": "6",
+                "3": "8",
+                "4": "24"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f(x) = x^4, find f'(1)",
+            "choices": {
+                "1": "1",
+                "2": "4",
+                "3": "3",
+                "4": "12"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Given f(x) = 3x^2, find f'(2)",
+            "choices": {
+                "1": "6",
+                "2": "24",
+                "3": "12",
+                "4": "18"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f(x) = 5x^3, find f'(1)",
+            "choices": {
+                "1": "5",
+                "2": "10",
+                "3": "30",
+                "4": "15"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f(x) = x^2 + 3x, find f'(2)",
+            "choices": {
+                "1": "7",
+                "2": "10",
+                "3": "5",
+                "4": "14"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f(x) = 2x^3 - x, find f'(1)",
+            "choices": {
+                "1": "1",
+                "2": "5",
+                "3": "6",
+                "4": "7"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Given f(x) = x^4 - 2x^2, find f'(2)",
+            "choices": {
+                "1": "16",
+                "2": "8",
+                "3": "24",
+                "4": "32"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f(x) = x^3 + 2x^2 + x, find f'(1)",
+            "choices": {
+                "1": "4",
+                "2": "6",
+                "3": "7",
+                "4": "8"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f(x) = 4x^2 - 3x + 1, find f'(0)",
+            "choices": {
+                "1": "-3",
+                "2": "1",
+                "3": "0",
+                "4": "4"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f(x) = x^5, find f'(-1)",
+            "choices": {
+                "1": "-5",
+                "2": "5",
+                "3": "-1",
+                "4": "1"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Given f(x) = x^4, find f'(-1)",
+            "choices": {
+                "1": "4",
+                "2": "1",
+                "3": "-4",
+                "4": "-1"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f(x) = x^3, find f'(-2)",
+            "choices": {
+                "1": "-12",
+                "2": "-8",
+                "3": "8",
+                "4": "12"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f(x) = 2x^2 + 5x, find f'(-1)",
+            "choices": {
+                "1": "1",
+                "2": "-1",
+                "3": "9",
+                "4": "-3"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f(x) = x^3 - 3x^2, find f'(3)",
+            "choices": {
+                "1": "0",
+                "2": "9",
+                "3": "18",
+                "4": "27"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x(x^2)",
+            "choices": {
+                "1": "2x^2",
+                "2": "x^2",
+                "3": "3x^2",
+                "4": "3x^3"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x(x + 1)",
+            "choices": {
+                "1": "x + 1",
+                "2": "2x",
+                "3": "2x + 2",
+                "4": "2x + 1"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^2(x + 1)",
+            "choices": {
+                "1": "3x^2 + 2x",
+                "2": "2x(x + 1)",
+                "3": "3x^2 + 1",
+                "4": "3x^3 + 2x^2"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x + 1)(x + 2)",
+            "choices": {
+                "1": "2x + 1",
+                "2": "2x + 3",
+                "3": "x + 3",
+                "4": "2x + 2"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^2(x^3)",
+            "choices": {
+                "1": "6x^5",
+                "2": "5x^5",
+                "3": "5x^4",
+                "4": "6x^4"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (2x)(3x^2)",
+            "choices": {
+                "1": "6x^2",
+                "2": "18x^3",
+                "3": "12x^2",
+                "4": "18x^2"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x(x^2 + 1)",
+            "choices": {
+                "1": "3x^2 + 1",
+                "2": "3x^2",
+                "3": "2x^2 + 1",
+                "4": "3x^3 + x"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^2(x^2 + 1)",
+            "choices": {
+                "1": "4x^3 + 2",
+                "2": "4x^3 + 2x",
+                "3": "2x(2x)",
+                "4": "4x^4 + 2x^2"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^2/x",
+            "choices": {
+                "1": "0",
+                "2": "2x",
+                "3": "1",
+                "4": "2"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x^3/x",
+            "choices": {
+                "1": "3x^2",
+                "2": "x",
+                "3": "3x",
+                "4": "2x"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^2 + 1)/x",
+            "choices": {
+                "1": "1 - 1/x^2",
+                "2": "1 + 1/x^2",
+                "3": "2x - 1/x^2",
+                "4": "1 - 1/x"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^3 + 1)/x",
+            "choices": {
+                "1": "2x + 1/x^2",
+                "2": "2x - 1/x^2",
+                "3": "3x^2 - 1/x^2",
+                "4": "2x - 1/x"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/(x + 1)",
+            "choices": {
+                "1": "1/(x + 1)^2",
+                "2": "-1/(x + 1)",
+                "3": "-1/(x + 1)^2",
+                "4": "-1/x^2"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/(x^2 + 1)",
+            "choices": {
+                "1": "2x/(x^2 + 1)^2",
+                "2": "-1/(x^2 + 1)^2",
+                "3": "-2/(x^2 + 1)^2",
+                "4": "-2x/(x^2 + 1)^2"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = x/(x + 1)",
+            "choices": {
+                "1": "1/(x + 1)^2",
+                "2": "-1/(x + 1)^2",
+                "3": "1/(x + 1)",
+                "4": "(2x + 1)/(x + 1)^2"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x + 1)^2",
+            "choices": {
+                "1": "x + 1",
+                "2": "2(x + 1)",
+                "3": "2",
+                "4": "(x + 1)"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x + 1)^3",
+            "choices": {
+                "1": "3(x + 1)",
+                "2": "(x + 1)^2",
+                "3": "3(x + 1)^2",
+                "4": "3x^2 + 1"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (2x + 1)^2",
+            "choices": {
+                "1": "2(2x + 1)",
+                "2": "4(2x + 1)^2",
+                "3": "2x + 1",
+                "4": "4(2x + 1)"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (3x + 1)^3",
+            "choices": {
+                "1": "9(3x + 1)^2",
+                "2": "3(3x + 1)^2",
+                "3": "9(3x + 1)^3",
+                "4": "27(3x + 1)^2"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^2 + 1)^2",
+            "choices": {
+                "1": "2(x^2 + 1)",
+                "2": "4x(x^2 + 1)",
+                "3": "4x^2(x^2 + 1)",
+                "4": "2x(x^2 + 1)"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^2 + 1)^3",
+            "choices": {
+                "1": "3(x^2 + 1)^2",
+                "2": "6x^2(x^2 + 1)^2",
+                "3": "6x(x^2 + 1)^2",
+                "4": "3x(x^2 + 1)^2"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = sqrt(x + 1)",
+            "choices": {
+                "1": "1/sqrt(x + 1)",
+                "2": "2sqrt(x + 1)",
+                "3": "-1/(2sqrt(x + 1))",
+                "4": "1/(2sqrt(x + 1))"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = sqrt(2x + 1)",
+            "choices": {
+                "1": "1/sqrt(2x + 1)",
+                "2": "1/(2sqrt(2x + 1))",
+                "3": "2/sqrt(2x + 1)",
+                "4": "2sqrt(2x + 1)"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^3 - 1)^2",
+            "choices": {
+                "1": "2(x^3 - 1)",
+                "2": "6x^2(x^3 - 1)",
+                "3": "6x(x^3 - 1)",
+                "4": "3x^2(x^3 - 1)"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (2x^2 + 3)^4",
+            "choices": {
+                "1": "4(2x^2 + 3)^3",
+                "2": "8x(2x^2 + 3)^3",
+                "3": "16x(2x^2 + 3)^3",
+                "4": "16x^2(2x^2 + 3)^3"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/(x + 1)^2",
+            "choices": {
+                "1": "2/(x + 1)^3",
+                "2": "-2/(x + 1)",
+                "3": "-1/(x + 1)^3",
+                "4": "-2/(x + 1)^3"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Find f'(x) if f(x) = 1/(x^2 + 1)^2",
+            "choices": {
+                "1": "-4x/(x^2 + 1)^3",
+                "2": "4x/(x^2 + 1)^3",
+                "3": "-2x/(x^2 + 1)^3",
+                "4": "-4/(x^2 + 1)^3"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (3x^2 - 1)^5",
+            "choices": {
+                "1": "15x(3x^2 - 1)^4",
+                "2": "30x(3x^2 - 1)^4",
+                "3": "30x^2(3x^2 - 1)^4",
+                "4": "5(3x^2 - 1)^4"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Find f'(x) if f(x) = sqrt(x^2 + 1)",
+            "choices": {
+                "1": "1/(2sqrt(x^2 + 1))",
+                "2": "2x/sqrt(x^2 + 1)",
+                "3": "x/sqrt(x^2 + 1)",
+                "4": "1/sqrt(x^2 + 1)"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Find f'(x) if f(x) = (x^2 + x)^3",
+            "choices": {
+                "1": "3(x^2 + x)^2",
+                "2": "3(x^2 + x)^2(2x)",
+                "3": "3(2x + 1)",
+                "4": "3(x^2 + x)^2(2x + 1)"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "If f'(x) > 0 on an interval, what is the behavior of f(x) on that interval?",
+            "choices": {
+                "1": "Increasing function",
+                "2": "Decreasing function",
+                "3": "Constant function",
+                "4": "Function with turning point"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "If f'(x) < 0 on an interval, what is the behavior of f(x) on that interval?",
+            "choices": {
+                "1": "Increasing function",
+                "2": "Decreasing function",
+                "3": "Constant function",
+                "4": "Discontinuous function"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "If f'(x) = 0 throughout an interval, what is the behavior of f(x)?",
+            "choices": {
+                "1": "Increasing function",
+                "2": "Decreasing function",
+                "3": "Constant function",
+                "4": "Always zero function"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f'(x) = 2x, on which interval is f(x) increasing?",
+            "choices": {
+                "1": "x < 0",
+                "2": "x = 0",
+                "3": "All real numbers x",
+                "4": "x > 0"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f'(x) = 2x, on which interval is f(x) decreasing?",
+            "choices": {
+                "1": "x < 0",
+                "2": "x > 0",
+                "3": "x = 0",
+                "4": "x <= 0"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f'(x) = x - 3, on which interval is f(x) increasing?",
+            "choices": {
+                "1": "x < 3",
+                "2": "x > 3",
+                "3": "x > -3",
+                "4": "x < -3"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "Given f'(x) = x - 3, on which interval is f(x) decreasing?",
+            "choices": {
+                "1": "x > 3",
+                "2": "x > -3",
+                "3": "x < 3",
+                "4": "x < -3"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "Given f'(x) = 5 - x, on which interval is f(x) increasing?",
+            "choices": {
+                "1": "x > 5",
+                "2": "x < -5",
+                "3": "x > -5",
+                "4": "x < 5"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "Given f'(x) = 5 - x, on which interval is f(x) decreasing?",
+            "choices": {
+                "1": "x > 5",
+                "2": "x < 5",
+                "3": "x > -5",
+                "4": "x < -5"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Given f'(x) = x(x - 2), on which interval is f(x) increasing?",
+            "choices": {
+                "1": "0 < x < 2",
+                "2": "x < 0 and x > 2",
+                "3": "x < 2",
+                "4": "x > 0"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "If f'(x) = 0, what type of function can f(x) be?",
+            "choices": {
+                "1": "Linear function not parallel to the X-axis",
+                "2": "Quadratic polynomial function",
+                "3": "Constant function",
+                "4": "Exponential function"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "What is the value of (x^5)'?",
+            "choices": {
+                "1": "4x^5",
+                "2": "5x^5",
+                "3": "x^4",
+                "4": "5x^4"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "What is the value of (5x^5)'?",
+            "choices": {
+                "1": "25x^4",
+                "2": "25x^5",
+                "3": "5x^4",
+                "4": "20x^4"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "What is the value of (x^5 + 10)'?",
+            "choices": {
+                "1": "5x^4 + 10",
+                "2": "5x^4",
+                "3": "5x^4 + 1",
+                "4": "4x^3"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "What is the value of (10)'?",
+            "choices": {
+                "1": "10",
+                "2": "1",
+                "3": "0",
+                "4": "10x"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "If f(x) = x^2, what is the value of f'(0)?",
+            "choices": {
+                "1": "1",
+                "2": "2",
+                "3": "Undefined",
+                "4": "0"
+            },
+            "answer": "4"
+        },
+        {
+            "question": "If f(x) = x^3, what is the value of f'(-2)?",
+            "choices": {
+                "1": "12",
+                "2": "-12",
+                "3": "-6",
+                "4": "6"
+            },
+            "answer": "1"
+        },
+        {
+            "question": "Which of the following is correct?",
+            "choices": {
+                "1": "(x^2)' = x",
+                "2": "(x^2)' = 2x",
+                "3": "(x^2)' = 2",
+                "4": "(x^2)' = 2x^2"
+            },
+            "answer": "2"
+        },
+        {
+            "question": "What is the product rule for differentiation of two functions? (Let F = First, L = Last)",
+            "choices": {
+                "1": "FL' - LF'",
+                "2": "F'L'",
+                "3": "FL' + LF'",
+                "4": "F'L - FL'"
+            },
+            "answer": "3"
+        },
+        {
+            "question": "What is the quotient rule for differentiation of two functions? (Let N = Numerator, D = Denominator)",
+            "choices": {
+                "1": "(ND' - DN')/D^2",
+                "2": "(DN' + ND')/D^2",
+                "3": "(DN' - ND')/N^2",
+                "4": "(DN' - ND')/D^2"
+            },
+            "answer": "4"
         }
     ]
 }
