@@ -388,7 +388,13 @@ overlay and frozen timer both survive a page reload: `finishedAt` rides the
 re-synced schema entry, so a reconnected finisher re-sees its result and the
 timer never resumes ticking. A repeat press — or a forged one — is a silent
 no-op (`player.finished` server-side; the upsert `ON CONFLICT(session_id)`
-backstops a restarted room that lost its sim map).
+backstops a restarted room that lost its sim map). **Rooms are single-run**:
+Play always `create`s a fresh room (`maxClients = 1`), so a finish ends the
+room too — `finishRun` schedules `this.disconnect()` ~2 s later
+(`FINISH_DISPOSE_DELAY_MS`, long enough for the `finishedAt` patch to land),
+and a last-client exit (Exit button / navigation) auto-disposes it. The web
+client stands on the completion screen (overlay + leaderboard CTA) instead of
+dropping to the menu when that terminal leave fires with the run finished.
 
 **Reconnection**: a dropped client (page reload, tab close, network blip)
 holds its seat + world entry for `RECONNECT_GRACE_SECONDS` (default 30,

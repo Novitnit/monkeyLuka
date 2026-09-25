@@ -75,6 +75,27 @@ generated config; see below).
 
 Per-workspace scripts also work from inside the app dir; don't use `npm run` (Bun is required for `.ts`).
 
+## Deployment (Docker / Cloudflare Tunnel)
+
+- `compose.yaml` runs `cloudflared` (remote-managed tunnel; token lives in
+  the gitignored `.env` as `CLOUDFLARE_TUNNEL_TOKEN`, template in
+  `.env.example`) alongside the dockerized `server` and `next` apps. Public
+  hostnames are configured in the Zero Trust dashboard: `monkeyluka.online`
+  → `http://next:3000`, `server.monkeyluka.online` → `http://server:3001`.
+- `apps/server/Dockerfile` (Bun, runs the raw-TS source directly) and
+  `apps/web/Dockerfile` (Next standalone, Node runtime), built from the repo
+  root context (see `.dockerignore`). `docker compose up -d --build` after
+  source changes.
+- **`NEXT_PUBLIC_COLYSEUS_ENDPOINT` is a build ARG** (inlined into the
+  browser bundle): `wss://server.monkeyluka.online` lives in the gitignored
+  root `.env` (see `.env.example`) — rebuild `next` after changing it.
+- `ALLOWED_ORIGIN_HOST` (compose) gates the Colyseus handshake + `/api`
+  CORS: currently `monkeyluka.online,server.monkeyluka.online`.
+- The runs SQLite is a shared named volume (`jungle-runs` mounted at
+  `/app/apps/server/data` in both containers): the server writes it, the
+  web `/leaderboard` reads it. Note the server reads `COLYSEUS_PORT`
+  (default 2567); the tunnel targets 3001.
+
 ## Testing
 
 - `bun test` from the root runs shared physics/math + server map-loader/quest

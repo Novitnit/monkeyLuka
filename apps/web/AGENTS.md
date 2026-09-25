@@ -49,11 +49,14 @@ the join state machine (name → join → play) and the Phaser mount lifecycle.
 A Play button opens the name dialog (`src/components/name-dialog.tsx` — the
 name goes on the leaderboard; it owns autofocus + Escape-to-close), and the
 menu card itself is `src/components/play-menu.tsx`. On confirm,
-`colyseusClient.joinOrCreate("jungle", { name }, JungleState)` from
-`src/lib/colyseus.ts` joins the Colyseus room and boots the Phaser client
-(`src/game/jungle-game.ts`) into a fullscreen mount. Room state + room name
-come from `@monkeyluka/shared`. Screen chrome shared with the placeholder
-screens (ambient glow backdrop, “back to menu” pill) lives in
+`colyseusClient.create("jungle", { name }, JungleState)` from
+`src/lib/colyseus.ts` creates a **fresh room per run** (never
+`joinOrCreate` — the jungle room is single-run and dies with its player, so
+routing into an existing room would share its solved signposts/opened doors
+across runs) and boots the Phaser client (`src/game/jungle-game.ts`) into a
+fullscreen mount. Room state + room name come from `@monkeyluka/shared`.
+Screen chrome shared with the placeholder screens (ambient glow backdrop,
+“back to menu” pill) lives in
 `src/components/chrome.tsx`.
 - The idle menu wears the shared chrome: `SiteHeader` at the top and a
   "← Back to the menu" link under the Play button. Once a room is joined the
@@ -429,7 +432,17 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   While the box is up it is
   modal: `state.questOpen` freezes movement input and the E key in
   `scene/update.ts`, and the box closes itself 3s after an unanswered
-  answer (a blip can't wedge the player in the modal).
+  answer (a blip can't wedge the player in the modal). Death questions
+  (pit/trap kills — `death.ts`) ride the same box with `kind: "death"`:
+  no signpost tablet, so the verdict is a "Wrong"/"Correct!"
+  screen-fixed flash in the panel; a wrong answer holds it for 3s and
+  update.ts's self-heal re-requests a fresh question (repeat until
+  correct), a correct answer revives through the checkpoint flow. The
+  verdict must be parented to the box's `windowGroup` (never the outer
+  container — which is only shown/hidden) so the next question's rebuild
+  destroys it; otherwise stale verdicts survive into the next panel and
+  stack overlapping duplicates — see
+  `discoveries/death-question-verdict-overlap.md`.
 - **Run timer + endgame finish (404 tile)**: `src/game/timer/run-timer.ts`
   renders a top-right HUD readout of the run time — a screen-fixed text
   (scrollFactor 0, above every room) whose elapsed base is pinned once at
@@ -457,7 +470,12 @@ screens (ambient glow backdrop, “back to menu” pill) lives in
   cleared of the top-left Exit pill and the touch pads); clicking it
   `router.push`es to `/leaderboard`, and the screen's unmount cleanup —
   game destroy + `room.leave()` + session clear — is the deliberate-exit
-  path, so nothing holds the finished seat.
+  path, so nothing holds the finished seat. The server destroys the room
+  ~2 s after the finish (`FINISH_DISPOSE_DELAY_MS` in the room), so the
+  completion screen normally survives without its room: the room's onLeave
+  fires with the run already finished and `play-screen.tsx` stays on the
+  overlay + CTA instead of dropping back to the menu (the game loop handles
+  the closed socket as its reconnection-frozen path).
   `finishedAt` rides the re-synced schema entry, so a reconnected finisher
   re-sees the overlay and the frozen timer (it never resumes ticking).
 - **Reconnection**: `src/lib/jungle-session.ts` keeps the live room's

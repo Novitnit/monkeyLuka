@@ -163,7 +163,15 @@ export function createQuestBox(
     }
 
     // Death questions: no signpost tablet (the message carried no tile),
-    // so the original feedback flash stays as the verdict.
+    // so the original feedback flash stays as the verdict. The flash is
+    // parented to `windowGroup` (NOT the outer container) on purpose: a
+    // wrong answer's penalty ends and update.ts's self-heal re-opens the
+    // box with a FRESH question via `open()`, which clears windowGroup
+    // (`removeAll(true)`) — so the old verdict is destroyed with it.
+    // Parenting to the container instead let stale "Wrong"/"Correct!"
+    // text survive into the next question and stack duplicates on
+    // repeated wrong answers (see discoveries/). It is added after the
+    // rows, so it draws on top of them during the penalty window.
     const feedback = scene.add
       .text(
         centerX,
@@ -177,7 +185,7 @@ export function createQuestBox(
         },
       )
       .setOrigin(0.5, 0.5);
-    container.add(feedback);
+    windowGroup.add(feedback);
 
     if (correct) {
       // Revive through the checkpoint flow (player:checkpoint → the room

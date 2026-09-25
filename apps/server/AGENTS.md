@@ -29,10 +29,17 @@ defineServer({
 ```
 
 - **The `rooms` object keys are the public matchmaker names.** `jungle` here is
-  what clients `joinOrCreate("jungle", ...)` against (see `ROOM_NAMES` in
+  what clients `create("jungle", ...)` against (see `ROOM_NAMES` in
   `@monkeyluka/shared`).
 - `defineRoom()` takes a **room class** (this core version does not accept the
   legacy object-literal rooms). Rooms live in `src/rooms/`.
+- **Jungle rooms are single-run**: the web client **creates** (never
+  joins) a fresh room per Play press, `maxClients = 1`, and the room dies
+  with its run — auto-disposed by Colyseus when the last client leaves
+  (`autoDispose`, default on) and explicitly `disconnect()`ed ~2 s after a
+  finish (`FINISH_DISPOSE_DELAY_MS`) so the client still receives the
+  `finishedAt` patch before the seat is torn down. No two runs ever share a
+  room's puzzle progress (solved signposts / opened doors).
 
 ## Ports & config
 
@@ -200,9 +207,13 @@ registered.
    action tiles). Its handler enforces the once-per-run rule (the player's
    `finished` flag, set in `ServerPlayer` at join) and calls `ctx.finish()`, a
    room-owned closure; `finishRun` in the room stamps the server wall-clock
-   finish moment on the synced `PlayerInfo.finishedAt` and records the run
-   to the SQLite store (next section). Not gated by a pending question — an
-   unfinished showquest doesn't block finishing.
+   finish moment on the synced `PlayerInfo.finishedAt`, records the run
+   to the SQLite store (next section), and schedules `this.disconnect()`
+   ~2 s later (`FINISH_DISPOSE_DELAY_MS`) to destroy the room — the room is
+   single-run, and the delay just lets the `finishedAt` patch reach the
+   client (freezing its timer / showing the overlay) before the seat goes.
+   Not gated by a pending question — an unfinished showquest doesn't block
+   finishing.
 
 ### Run results (SQLite, the finish persistence)
 

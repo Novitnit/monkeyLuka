@@ -156,7 +156,8 @@ defineServer({
 ```
 
 - **`rooms` object keys are the public matchmaker names** — the `jungle` key
-  is what clients `joinOrCreate("jungle", …)` against.
+  is what clients `create("jungle", …)` against (each Play press makes a
+  fresh room; see §7.2).
 - `defineRoom()` takes a room **class** (no object-literal rooms in this
   core). `JungleRoom` (`src/rooms/jungle/`) extends
   `Room<{ state: JungleRoomState }>`:
@@ -187,7 +188,12 @@ defineServer({
     failing report stops the player at the last accepted position and
     violations count toward a kick at `ANTI_CHEAT.maxViolations`. No
     unvalidated client-supplied position is ever written to the schema.
-  - `maxClients = 20` is a soft cap until real matchmaking/filtering lands.
+  - **Single-run rooms**: `maxClients = 1`; the web client only ever
+    `create`s, and the room is destroyed when its run ends or its player
+    leaves — Colyseus `autoDispose` covers the last-client leave, and
+    `finishRun` schedules `this.disconnect()` ~2 s after a finish
+    (`FINISH_DISPOSE_DELAY_MS`) so the `finishedAt` patch reaches the
+    client first. No two runs share a room's puzzle progress.
 - **Origin gate**: `ALLOWED_ORIGIN_HOST` is a **comma-separated host
   allowlist** compiled by `compileOriginAllowlist()` in `@monkeyluka/shared`
   (default `*` / unset = any origin) and applied in `beforeUpgrade` — browser
@@ -214,8 +220,10 @@ PWA) — no user gesture, no lock, no rendering.
 1. **Menu → name dialog.** A Play button opens a modal asking for the
    leaderboard name (validated client-side against
    `MAX_PLAYER_NAME_LENGTH`).
-2. **Join.** `colyseusClient.joinOrCreate(ROOM_NAMES.jungle, { name }, JungleState)`
-   from `src/lib/colyseus.ts` opens the WebSocket to the Colyseus server and
+2. **Create a fresh room.** `colyseusClient.create(ROOM_NAMES.jungle, { name }, JungleState)`
+   from `src/lib/colyseus.ts` opens the WebSocket to the Colyseus server (each
+   Play press creates a new room — never `joinOrCreate`, which would route
+   into an existing room and share its solved signposts/opened doors) and
    supplies `JungleState` as the root schema so `room.state` is typed and
    live-synced.
 3. **Boot Phaser.** Once joined, `createJungleGame()` (in
@@ -282,7 +290,7 @@ using Elysia's official Next.js integration:
 Player (browser)
   │  1. GET /play                      → Next.js renders menu
   │  2. Play → dialog (name validated)
-  │  3. joinOrCreate("jungle", {name}, JungleState)
+  │  3. create("jungle", {name}, JungleState)   (fresh room per Play)
   │     └─ WebSocket upgrade (:2567)   → Colyseus matchmaker
   │  4. JungleRoom.onJoin:             → state.players[sessionId] = PlayerInfo(name, spawn)
   │  5. client boots Phaser            → builds SolidGrid from layer1 (same gids as server)
@@ -317,7 +325,9 @@ The codebase is foundation-stage and self-documents its next steps:
 
 - Leaderboard identity exists in `JungleState.players`; leaderboard **stats**
   are called out as the next addition to `PlayerInfo`.
-- `maxClients` is a soft cap until real **matchmaking/filtering** lands.
+- Rooms are already **single-run**: each Play creates a new room and the
+  room dies at the finish or when the player leaves; a generic
+  **matchmaking/filtering** layer would be the next step.
 - **Gameplay is now client-simulated with server-side anomaly detection**:
   shared tile collision + run/jump physics run on the client; the room
   validates movement reports and stops players whose reports look abnormal

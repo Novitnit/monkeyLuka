@@ -62,6 +62,9 @@ export function PlayScreen() {
   // "View leaderboard" button over the canvas next to the completion
   // overlay. Never reset for a live session: the run is over for good.
   const [finished, setFinished] = useState(false);
+  // Mirrors `finished` for the room's onLeave handler (registered once per
+  // adopted room, so its closure can't see a `finished` state set later).
+  const finishedRef = useRef(false);
 
   const roomRef = useRef<JungleRoom | null>(null);
   const gameRef = useRef<
@@ -99,7 +102,10 @@ export function PlayScreen() {
     let disposed = false;
     void createJungleGame(mountRef.current, roomRef.current, {
       touchControls: touchControlsRef.current,
-      onFinish: () => setFinished(true),
+      onFinish: () => {
+        finishedRef.current = true;
+        setFinished(true);
+      },
     }).then((game) => {
       if (disposed) {
         game.destroy(true);
@@ -204,6 +210,12 @@ export function PlayScreen() {
       if (roomRef.current !== room) return; // deliberate exit already handled
       roomRef.current = null;
       clearJungleSession();
+      // The run already ended: the server destroys the room right after the
+      // finish, so this drop is the expected terminal leave — sit on the
+      // completion screen (overlay + leaderboard CTA) instead of restarting
+      // the join state machine. Both exits still work: the CTA navigates
+      // away and Exit goes back to the menu, each clearing the rest.
+      if (finishedRef.current) return;
       setPhase("idle");
       if (code !== CloseCode.CONSENTED) {
         setError(
@@ -228,7 +240,11 @@ export function PlayScreen() {
     setError(null);
     setPhase("joining");
     try {
-      const room = await colyseusClient.joinOrCreate(
+      // A fresh room per run: the jungle is a single-run room (the server
+      // destroys it at the finish or when the player leaves), so Play
+      // always creates a new one — joinOrCreate would route into an existing
+      // room and share its solved signposts/opened doors across runs.
+      const room = await colyseusClient.create(
         ROOM_NAMES.jungle,
         { name: trimmed },
         JungleState,

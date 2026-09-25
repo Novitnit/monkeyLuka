@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
   // @monkeyluka/shared ships raw .ts (no build step) — Turbopack needs the
   // hint to transpile it.
   transpilePackages: ["@monkeyluka/shared"],
+  // Docker deployment (apps/web/Dockerfile) runs the traced server.
+  output: "standalone",
 };
 
 export default nextConfig;

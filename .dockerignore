@@ -1,0 +1,11 @@
+# Keep the docker build contexts lean (context = repo root).
+.git
+**/node_modules
+**/.next
+apps/server/data
+.env
+.env.*
+**/.env
+**/.env.*
+*.log
+.DS_Store

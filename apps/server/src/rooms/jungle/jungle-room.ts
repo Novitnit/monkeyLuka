@@ -71,9 +71,25 @@ const RECONNECT_GRACE_SECONDS = Number(
   process.env.JUNGLE_RECONNECT_SECONDS ?? 30,
 );
 
+/**
+ * How long a finished room outlives the run, ms: long enough for the client
+ * to receive the `finishedAt` state patch it freezes its timer and shows the
+ * completion overlay from, before the room is destroyed. The result is
+ * already persisted to SQLite by then, so a tight window only risks the
+ * overlay/CTA, never the record.
+ */
+const FINISH_DISPOSE_DELAY_MS = 2_000;
+
 export class JungleRoom extends Room<{ state: JungleRoomState }> {
-  /** Soft cap until matchmaking/filtering lands (Colyseus default is 10). */
-  override maxClients = 20;
+  /**
+   * One run per room: Play always creates a fresh room and the server
+   * destroys it when the run ends or the player leaves, so a room never has
+   * more than this single occupant — and never shares its solved signposts /
+   * opened doors with another run. Reconnection still works: a dropped
+   * client's reserved seat fulfills the same session, so maxClients never
+   * blocks the owner's own reconnect.
+   */
+  override maxClients = 1;
 
   private map!: JungleMapData;
   private quests!: JungleQuestionBank;
@@ -363,6 +379,16 @@ export class JungleRoom extends Room<{ state: JungleRoomState }> {
         `${info?.name ?? client.sessionId} finished in ${timeMs}ms (${player.deaths} deaths)`,
       );
     }
+    // The run is over: destroy the room shortly after the finish so the
+    // client still receives the `finishedAt` patch (freezes its timer, shows
+    // the completion overlay) before the seat is torn down. The result is
+    // already in SQLite, so nothing is lost with the room. Scheduled on the
+    // room clock so a normal leave during the grace window (auto-dispose on
+    // the last client) clears the pending dispose instead of double-firing.
+    this.clock.setTimeout(() => {
+      if (debug) console.log(`Room ${this.roomId} disposed after a finished run`);
+      void this.disconnect();
+    }, FINISH_DISPOSE_DELAY_MS);
   }
 
   /**

@@ -1,0 +1,77 @@
+# Cloudflare Tunnel + monkeyLuka services.
+#
+# The tunnel is REMOTE-MANAGED: with a token from Zero Trust, the public
+# hostnames are configured in the Cloudflare dashboard (Zero Trust → Networks
+# → Tunnels → your tunnel → Public Hostnames), NOT in this file. Point each
+# dashboard hostname at the internal compose-network address:
+#
+#   monkeyluka.online       → http://next:3000     (Next.js / web)
+#   server.monkeyluka.online → http://server:3001   (Colyseus / game server)
+#
+# cloudflared dials OUT to Cloudflare's edge; the dashboard sends requests
+# back to those addresses inside this network, so no host ports need to be
+# published.
+#
+# Token: put it in the gitignored .env as CLOUDFLARE_TUNNEL_TOKEN
+# (see .env.example). Validate with `docker compose config`. Build the two
+# app images with `docker compose build` (context = repo root, Dockerfiles
+# under apps/*).
+
+name: monkeyluka
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    # `--no-autoupdate` keeps cloudflared from restarting itself inside the
+    # container; TUNNEL_TOKEN is the only config a remote-managed tunnel needs.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - server
+      - next
+    networks:
+      - tunnel
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: monkeyluka-server:latest
+    environment:
+      # The tunnel route targets server:3001; the app reads COLYSEUS_PORT.
+      COLYSEUS_PORT: 3001
+      # Colyseus handshake origin gate: pages load from monkeyluka.online,
+      # so their WebSocket Origin is https://monkeyluka.online (or the
+      # server subdomain if visited directly).
+      ALLOWED_ORIGIN_HOST: monkeyluka.online,server.monkeyluka.online
+    volumes:
+      # Runs SQLite lives here (server writes, web /leaderboard reads).
+      - jungle-runs:/app/apps/server/data
+    networks:
+      - tunnel
+
+  next:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # Browser → Colyseus endpoint, baked at build time (NEXT_PUBLIC_*,
+      # from the root .env) — the tunnel host mapped to server:3001.
+      args:
+        NEXT_PUBLIC_COLYSEUS_ENDPOINT: ${NEXT_PUBLIC_COLYSEUS_ENDPOINT:-}
+    image: monkeyluka-next:latest
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # Mirror of the server's origin gate, for the Elysia /api CORS.
+      ALLOWED_ORIGIN_HOST: monkeyluka.online,server.monkeyluka.online
+    volumes:
+      - jungle-runs:/app/apps/server/data
+    networks:
+      - tunnel
+
+volumes:
+  jungle-runs:
+
+networks:
+  tunnel:
